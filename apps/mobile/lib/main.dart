@@ -747,6 +747,7 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
 
   final _sessionRouteWindow = ValueNotifier((AuthStatus.starting, 0, false));
   bool _logoutRoutePending = false, _logoutRouteScheduled = false;
+  bool _suppressAutomaticAuthAfterLogout = false;
   void _sessionRouteChanged() {
     final sessions = widget.sessions;
     if (_lastLogoutVersion != sessions.logoutVersion) {
@@ -754,7 +755,9 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
       _postLinks.clear();
       _promptedPostLink = null;
       _logoutRoutePending = true;
+      _suppressAutomaticAuthAfterLogout = true;
     }
+    if (sessions.isAuthenticated) _suppressAutomaticAuthAfterLogout = false;
     _schedulePostLink();
     // Expiry persistence still notifies its consumers, but renewing the same
     // session must not rebuild every retained tab behind the active detail.
@@ -786,7 +789,7 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
           return;
         }
         navigator.popUntil((route) => route.isFirst);
-        if (storageFailure) _openAuth();
+        if (storageFailure) _openAuth(allowAfterLogout: true);
       });
     }
   }
@@ -816,9 +819,13 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
     }
   }
 
-  void _openAuth() {
+  void _openAuth({bool allowAfterLogout = false}) {
     final navigator = _navigatorKey.currentState;
-    if (navigator == null || _authRouteOpen) return;
+    if (navigator == null ||
+        _authRouteOpen ||
+        _suppressAutomaticAuthAfterLogout && !allowAfterLogout) {
+      return;
+    }
     _authRouteOpen = true;
     navigator
         .push(
@@ -1179,7 +1186,7 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
               restoringSession:
                   widget.sessions.status == AuthStatus.starting ||
                   widget.sessions.status == AuthStatus.restoring,
-              onLoginRequested: _openAuth,
+              onLoginRequested: () => _openAuth(allowAfterLogout: true),
               onMessagesPressed: widget.governance == null
                   ? null
                   : _openMessages,

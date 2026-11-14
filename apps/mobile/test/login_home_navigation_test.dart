@@ -74,6 +74,15 @@ Future<void> openLogoutSetting(WidgetTester tester) async {
   );
 }
 
+Future<void> confirmSettingsLogout(WidgetTester tester) async {
+  expect(
+    find.byKey(const ValueKey('settings-logout-confirmation')),
+    findsOneWidget,
+  );
+  await tester.tap(find.byKey(const ValueKey('settings-logout-confirm')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets(
     'restoration keeps the complete welcome branding while directory is pending',
@@ -143,15 +152,39 @@ void main() {
     await disposeApp(tester);
   });
 
-  testWidgets('settings logout lands on welcome with no protected back stack', (
+  testWidgets('settings logout confirms before reaching stable welcome', (
     tester,
   ) async {
     final f = HomeTestFixture();
     await tester.pumpWidget(await f.create());
     await tester.pumpAndSettle();
+    final staleAuth = tester
+        .widget<FeedScreen>(find.byType(FeedScreen))
+        .onAuthenticationRequired;
     await openLogoutSetting(tester);
     await tester.tap(find.byKey(const ValueKey('settings-logout')));
     await tester.pumpAndSettle();
+
+    expect(f.sessions.isAuthenticated, isTrue);
+    expect(f.store.current!.session, isNotNull);
+    expect(find.byType(AuthWelcomeScreen), findsNothing);
+    expect(
+      find.byKey(const ValueKey('settings-logout-confirmation')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('settings-logout-cancel')));
+    await tester.pumpAndSettle();
+    expect(f.sessions.isAuthenticated, isTrue);
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('settings-logout-confirmation')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('settings-logout')));
+    await tester.pumpAndSettle();
+    expect(f.sessions.isAuthenticated, isTrue);
+    await confirmSettingsLogout(tester);
 
     expect(f.sessions.status, AuthStatus.signedOut);
     expect(f.store.current!.session, isNull);
@@ -163,6 +196,11 @@ void main() {
     final context = tester.element(find.byType(AuthWelcomeScreen));
     expect(ModalRoute.of(context)!.isFirst, isTrue);
     expect(Navigator.of(context).canPop(), isFalse);
+    staleAuth();
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.byType(AuthWelcomeScreen), findsOneWidget);
+    expect(find.byType(AuthScreen, skipOffstage: false), findsNothing);
     await disposeApp(tester);
   });
 
@@ -221,6 +259,7 @@ void main() {
     await openLogoutSetting(tester);
     await tester.tap(find.byKey(const ValueKey('settings-logout')));
     await tester.pumpAndSettle();
+    await confirmSettingsLogout(tester);
     expect(f.sessions.status, AuthStatus.signedOut);
     expect(f.sessions.hasPendingLogout, isTrue);
     expect(find.byType(AuthWelcomeScreen), findsOneWidget);
@@ -243,6 +282,7 @@ void main() {
     await openLogoutSetting(tester);
     await tester.tap(find.byKey(const ValueKey('settings-logout')));
     await tester.pumpAndSettle();
+    await confirmSettingsLogout(tester);
     expect(f.sessions.status, AuthStatus.storageFailure);
     expect(find.byType(AuthScreen), findsOneWidget);
     expect(find.byKey(const ValueKey('login-submit')), findsNothing);

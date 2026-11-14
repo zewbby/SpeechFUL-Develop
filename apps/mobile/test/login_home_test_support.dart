@@ -236,6 +236,9 @@ class HomeTestFixture {
     expect(find.text('账号与安全'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('settings-logout')));
     await tester.pumpAndSettle();
+    expect(sessions.isAuthenticated, isTrue);
+    await tester.tap(find.byKey(const ValueKey('settings-logout-confirm')));
+    await tester.pumpAndSettle();
     expect(find.byType(AuthWelcomeScreen), findsOneWidget);
     expect(find.byType(AuthScreen), findsNothing);
     expect(find.text('账号已登录'), findsNothing);
