@@ -1,11 +1,11 @@
 # CAMPUS-CATEGORIES-20261114 - 优化校园分类
 
 - 模式：常规；负责人／状态维护人：当前 Session。
-- 分支／Worktree／PR：`codex/feat/campus-category-labels`；`E:/code_collection/java_code/SpeechFUL.git`；[私有 PR #151](https://github.com/zewbby/SpeechFUL-Develop/pull/151)（draft）。实际基线为 `zewbby/SpeechFUL-Develop` 的 `main@2fdf8f6a2b62d708d229e3fc372081df39f85bd0`，远端别名 `develop`；公开 `origin` 保留，未向其推送。
-- 授权依据与边界：用户要求“新建分支，优化分类页面的标签，然后PR”，并指定 `https://github.com/zewbby/SpeechFUL-Develop.git`；后续要求将推荐分类改名并继续 PR，且明确指出 PR #151 三项失败需要勘察。授权本任务开发、关联 CI 修复、验证、提交、推送任务分支及更新原 PR。不合并、不部署、不修改正式数据。
+- 分支／Worktree／PR：`codex/feat/campus-category-labels-reopen`；`C:/Users/34408/.codex/worktrees/campus-category-labels-reopen/SpeechFUL.git`；新 PR 待创建。当前基线为 `zewbby/SpeechFUL-Develop` 的 `main@315f1513f9362013956676234cd6ef40c1d234b5`，远端别名 `develop`；公开 `origin` 保留，未向其推送。
+- 授权依据与边界：用户要求“分类的那个重新 PR 一下”，并明确不直接改动 `main`。授权本任务基于最新 `main` 重建分类分支、解决合并差异、验证、提交、推送任务分支并创建新 PR。不合并、不部署、不修改正式数据，不覆盖其他分支的未提交改动。
 - 需求确认：用户逐项指定七个原分类的新名称及三个新增分类，按提供顺序展示；后续明确将“海大安利”改为“吐血推荐”，其余分类保持不变。原分类保留 UUID 和 code，不迁移旧帖归属。示例说明分类语义，不自动建立固定主题标签或内容分类器。沿用既有布局、浏览与发帖独立选择、初始可见标志和权限检查；所有十类均可在完整目录选择。新增三类沿用非首批分类的初始标志，不自动改变用户筛选。无未决产品取舍。
-- 更新日期：2026-11-14。
-- 状态：实现 已完成；验证 BLOCKED（本轮本地回归 PASS；产品 CI 修复后的结果以当前 PR 检查为准，确认前保持 draft）；合并 未合并；发布 未发布。
+- 更新日期：2026-11-17。
+- 状态：实现 已完成；验证 PASS（重建分支本地回归；历史 PR #151 已不可访问）；合并 未合并；发布 未发布。
 
 ## 目标与范围
 
@@ -28,8 +28,8 @@
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
-| 基线与范围 | `2fdf8f6`；Windows | PASS：私有主线、干净工作区、远端与任务分支已核对；公开仓库为快照，未向其推送。 |
-| 实现 | 产品提交 `834a7cc87ad6bc9fe0f54ee8aac4912a1bb35034`，基线 `2fdf8f6` | 已完成：目录七类改名＋三类新增；原标识保留；屏蔽／搜索／热榜十类容量；十分类压缩搜索游标及旧游标解码；0040 正式迁移和运行时版本要求。后续仅任务记录链接更新不改变此产品证据版本。 |
+| 基线与范围 | `315f151`；Windows | PASS：最新 `develop/main`、独立 worktree 和任务分支已核对；`main` 未直接提交，公开 `origin` 未推送。 |
+| 实现 | 重建提交 `ac7d5f2`、`fe6c23e`、`96fd727` 及后续任务记录提交，基线 `315f151` | 已完成：目录七类改名＋三类新增；原标识保留；屏蔽／搜索／热榜十类容量；十分类压缩搜索游标及旧游标解码；0052 正式迁移和运行时版本要求。历史产品提交 `834a7cc`、`9ba2f6b` 仅用于迁移差异。 |
 | Go 聚焦回归 | 同基线＋最终 Go 差异；Windows；`go -C services/api test -mod=readonly ./internal/channels ./internal/posts ./internal/rankings` | PASS；含十分类目录、十分类热榜元数据、最大计数搜索游标与旧格式解码。Redis 真实实例用例因无专用 fixture SKIP。 |
 | Go Linux 静态检查 | 同基线＋最终 Go 差异；`GOOS=linux go -C services/api build -mod=readonly ./...`、`go -C services/api vet -mod=readonly ./...` | PASS；编译与 vet 包含关联测试代码，不证明 Linux 测试或真实 SQL 已执行。Windows 全包测试受既有 `syscall.Flock` 平台依赖阻断，未修改该边界。 |
 | Flutter 聚焦及关联回归 | Flutter 3.47.5／Dart 3.13.4；同基线＋最终 Flutter 逻辑差异；`flutter test --no-pub`，见下方文件清单 | PASS：界面等 8 文件 125 项；认证 API 48 项单独复跑通过，共 173 项。首轮认证 API 初始化因 PATH 缺 OpenSSL 受阻，追加已有 Git OpenSSL 后复跑；不是产品失败。 |
@@ -64,6 +64,28 @@ Flutter 文件清单：`campus_categories_test.dart`、`publish_category_test.da
 - PASS：`flutter pub get --offline` 仅更新 meta 的直接依赖标记，无版本或哈希改变；差异空白检查通过。
 - BLOCKED 本地：分类 HTTP／私信真实 SQL 测试需要 Linux 与明确归属的一次性 PostgreSQL；Windows `syscall.Flock` 编译边界仍存在。完整演练、SQL 与 Android 结果以修复后 [当前 PR 检查](https://github.com/zewbby/SpeechFUL-Develop/pull/151/checks)为准。
 
+产品提交 `9ba2f6b823cf10d71bcd45857127fdf96724021e` 于 2026-11-14 22:43（Asia/Shanghai）核对完成：29 项检查中 28 项 PASS、0 项 FAIL、1 项预期 SKIP，无运行中检查。原失败的 [回滚演练](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43605342664/job/132478770493)、[私信真实 SQL](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43605342813/job/132478676677)、[Flutter 与真实 Feed](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43605342655/job/132478676375) 均 PASS；Android 候选构建和其余适用产品检查亦 PASS。后续若仅修改本任务证据记录，不改变此产品提交的源码或本地测试证明范围；当前 PR head 的实时检查仍须核对。协作工具另有 19 项本地回归 PASS。
+
+## 重建分支与迁移编号适配
+
+2026-11-17 复核时原私有 PR #151 已不存在，远端分类分支也已消失；最新 `main` 未包含分类提交。为避免直接修改 `main`，从 `315f151` 建立独立 worktree 分支 `codex/feat/campus-category-labels-reopen`，按原顺序迁入 `834a7cc`、`50215b9`、`9ba2f6b`、`84a96d4`。
+
+合并差异处理如下：
+
+- 当前 `main` 已占用 `0040_author_block_unification.sql`，分类迁移由 `0040_campus_categories.sql` 重编号为 `0052_campus_categories.sql`；完整 goose 链的最新版本由 51 调整为 52，前向不可回滚检查同步保留 0052。
+- 私信、Feed、头像、收件箱等迁移测试以当前 `main` 的 51/50 链编号为事实，保留后来新增的账户级拉黑、搜索文档和密码登录检查，再加入十分类目录与热榜输入断言。
+- `feed-ui.yml` 同时保留当前 `main` 的学生信件渲染测试和分类页面测试。
+- `tools/prerelease/environment.py` 保留当前 `main` 已修复的仅归档 `services/api` 行为，并采纳可复用的 `export_rollback_source` 与对应 LFS 回归测试。
+
+重建分支验证：
+
+- `go -C services/api test -mod=readonly ./internal/channels ./internal/posts ./internal/rankings`：PASS。
+- `GOOS=linux go -C services/api vet -mod=readonly ./internal/authprivacy ./internal/authprivacyhttp ./internal/channels ./internal/posts ./internal/rankings`：PASS。
+- `flutter analyze --no-pub`：PASS；分类和关联 125 项通过；`auth_api_test.dart` 在 PATH 加入已有 Git OpenSSL 后 53 项 PASS。
+- `python -m unittest discover -s tools/prerelease/tests -v`：18 项运行，10 项 PASS、8 项按条件 SKIP。
+
+真实 SQL、Android 和真机验收未在本机冒充通过，由新 PR 的产品 CI 继续验证。
+
 ## 阻碍与下一步
 
-沿用私有 `SpeechFUL-Develop` 的 draft PR #151；适用产品 CI 的当前结果以 [PR 检查](https://github.com/zewbby/SpeechFUL-Develop/pull/151/checks)为准，不向公开仓库推送。三项失败修复后的真实 SQL、回滚演练与 Android 检查需继续核对，未通过前不标记完整验收。迁移不支持向下回滚；部署时必须安排旧客户端更新，先交付兼容七／十分类的新客户端，再协调后端迁移和完整服务端切换；不能将旧七分类客户端直接视为十分类兼容。无合并或正式部署授权。
+分类行为已从最新 `main` 重建到独立分支，等待新 PR 创建与 CI；历史 PR #151 不再作为交付载体。人工进程验收、真机和生产不冒充通过，不自动触发历史延期任务。迁移不支持向下回滚；部署时必须安排旧客户端更新，先交付兼容七／十分类的新客户端，再协调后端迁移和完整服务端切换；不能将旧七分类客户端直接视为十分类兼容。无合并或正式部署授权。
