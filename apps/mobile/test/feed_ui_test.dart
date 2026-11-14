@@ -1460,7 +1460,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('作者拉黑'), findsOneWidget);
+    expect(find.text('黑名单'), findsOneWidget);
     expect(find.text('林间来信'), findsOneWidget);
     await tester.tap(
       find.byKey(
@@ -1471,10 +1471,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('author-unblock-confirm')));
     await tester.pumpAndSettle();
     expect(f.api.calls, contains('unblock:${FeedTestApi.blockedAuthorId}'));
-    expect(find.text('暂无作者拉黑记录'), findsOneWidget);
+    expect(find.text('暂无记录'), findsOneWidget);
     expect(f.api.authorBlocks, isEmpty);
   });
-  testWidgets('author section fails independently and retries', (tester) async {
+  testWidgets('blacklist read failure retries in place', (tester) async {
     final f = await FeedFixture.create();
     addTearDown(f.dispose);
     f.api.blockedAuthorsFailure = const PostFailure(
@@ -1488,10 +1488,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('作者拉黑读取失败，请重试'), findsOneWidget);
+    expect(find.text('黑名单读取失败，请重试'), findsOneWidget);
     f.api.blockedAuthorsFailure = null;
-    await tester.tap(find.text('作者拉黑读取失败，请重试'));
+    await tester.tap(find.text('黑名单读取失败，请重试'));
     await tester.pumpAndSettle();
-    expect(find.text('暂无作者拉黑记录'), findsOneWidget);
+    expect(find.text('暂无记录'), findsOneWidget);
   });
 }
