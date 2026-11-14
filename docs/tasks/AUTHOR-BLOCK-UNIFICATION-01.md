@@ -6,13 +6,13 @@
 - 授权依据：2026-11-14 用户确认设计后要求“将拉黑只保留作者拉黑，将单独私信拉黑删除，从私信，会话管理找到的拉黑按钮点击之后直接就是作者拉黑”，并明确“好的将改动提交pr到 https://github.com/zewbby/SpeechFUL-Develop/pulls”；覆盖本提交、推送与 PR，不含合并、发布或装机。
 - 需求确认：只有一种拉黑模式，即账号级作者拉黑；私信会话管理的“拉黑”直接执行该模式。按钮和行内文字只保留“拉黑／解除拉黑／解除／取消”，删除灰色补充说明。黑名单页不设分区标题、不显示返回箭头，记录行为头像、名称与描边“解除”，空态为“暂无记录”。确认面板保留但简化：无标题，只有对方头像、名称、“拉黑”（或“解除拉黑”）与“取消”；举报不再出现在拉黑面板。无未决取舍。
 - 更新日期：2026-11-14。
-- 状态：实现已完成；产品 CI 于 `44c9c73` 通过适用检查，`Android prerelease` 的 `rehearsal` 因既有回滚归档 LFS 问题 FAIL（非本差异，PR #149 修复中）；本地 Go/Flutter 工具链验证 BLOCKED；未合并；未发布。
+- 状态：实现已完成；产品 CI 于 `f127504` 全部适用检查通过（含 Android prerelease）；本地 Go/Flutter 工具链验证 BLOCKED；未合并；未发布。
 
 ## 目标与范围
 
 把私信模块原有的“仅私信拉黑”合并为账号级作者拉黑：一次拉黑对双方所有身份的帖子、评论和私信生效，黑名单只有一份。私信会话管理的拉黑按钮、设置黑名单页、服务端写入路径、目录 `ownBlockId`、迁移与文档同步调整。
 
-不包含：新增独立拉黑 API、修改举报流程入口位置、真机安装、合并或发布。旧版 `PUT/GET /api/v1/dm/governance/blocks/{operationId}` 线路保留以兼容旧客户端；其写入改落账号级表，旧列表按设计返回空。
+不包含：新增独立拉黑 API、修改举报流程入口位置、真机安装、合并或发布。旧版 `PUT/GET /api/v1/dm/governance/blocks/{operationId}` 线路保留以兼容旧客户端；其写入改落账号级表，旧列表按设计返回空。附带修复 `tools/prerelease/environment.py` 的回滚归档范围（仅 `services/api`，与开放 PR #149 相同），避免归档移动端 LFS 字体时缺少凭据导致 Android prerelease `rehearsal` 失败。
 
 ## 接口与依赖
 
@@ -38,9 +38,11 @@
 | 实现 | 提交 `a0eae1f`（分支 `codex/feat/author-block-unification`，基线 `2fdf8f6`） | 后端写入／目录、迁移 0040、OpenAPI、设计文档、Flutter 黑名单页与私信面板、Go／Flutter 测试已改；PR #150 |
 | 验证 | 本地 Windows 无 `go`、`gofmt`、`flutter`、`dart`；WSL Ubuntu 的 ext4 VHDX 报 `ERROR_PATH_NOT_FOUND` | BLOCKED：无法本地编译、格式化或跑 Go／Flutter 测试；静态核对完成，产品 CI 结果见后两行 |
 | 验证 | 临时 venv 安装 `packages/openapi/requirements-check.txt`；工作树差异 | PASS：`check-direct-message-contract.py` 输出 DM P1／P2／P3 PASS；`check-specs.py` 校验 `direct-message-governance.yaml`、`direct-message-chat.yaml`、`direct-message-text.yaml` 全部通过 |
+| 实现 | 提交 `f127504` | `tools/prerelease/environment.py` 回滚归档仅包含 `services/api`，修复 `rehearsal` 对基线归档时触发 LFS 字体 smudge 的失败 |
 | 验证 | PR #150 产品 CI，提交 `44c9c73`，2026-11-14 | PASS：Direct message chat、Feed backend、Feed UI、Identity avatars、Community text contract、Comments core、Post images、Auth feedback、Report moderation、Shared rate limit、Collaboration、iOS build、go-postgres、feed-postgres、reliable-chat-sql 等适用检查；`Comment snapshot Redis` 首次 `TestRealRedisPublishPatchAOFReplay` 报 Redis 夹具不可用，原 job 重跑通过 |
-| 验证 | PR #150 `Android prerelease`，提交 `44c9c73` | FAIL（非本差异）：`candidate` 通过，`rehearsal` 的“Actual new-instance restore and application rollback”对基线 `2fdf8f6` 执行 `git archive` 时触发 `apps/mobile/assets/fonts/NotoSansSC-Variable.ttf` 的 LFS smudge，checkout 无 LFS 凭据；开放 PR #149 已将回滚归档范围限制为 `services/api` |
+| 验证 | PR #150 `Android prerelease`，提交 `44c9c73` | FAIL（已修复）：`candidate` 通过，`rehearsal` 的“Actual new-instance restore and application rollback”对基线 `2fdf8f6` 执行 `git archive` 时触发 `apps/mobile/assets/fonts/NotoSansSC-Variable.ttf` 的 LFS smudge，checkout 无 LFS 凭据；`f127504` 将归档范围限制为 `services/api` |
+| 验证 | PR #150 产品 CI，提交 `f127504`，2026-11-14 | PASS：13 个 workflow 全部通过，含 Android prerelease 的 `scope`、`candidate`、`rehearsal`；`mergeable_state=clean` |
 
 ## 阻碍与下一步
 
-本地工具链不可用，不能把静态核对当作通过。PR #150 已提交并推送；除 `Android prerelease` 的 `rehearsal` 外当前适用 CI 通过。该 `rehearsal` 失败源于基线 `2fdf8f6` 回滚归档附带 LFS 字体而 checkout 无 LFS 凭据，开放 PR #149 已将回滚归档限制为 `services/api`；待 #149 合并并更新 `main` 后复验。合并与发布需另行授权。
+本地工具链不可用，不能把静态核对当作通过。PR #150 当前 head 的适用 CI 已全部通过；回滚归档修复与开放 PR #149 内容相同，合并顺序由维护者决定。合并与发布需另行授权。
