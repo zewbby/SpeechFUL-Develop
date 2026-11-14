@@ -489,6 +489,33 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
   }
 
   bool _authRouteOpen = false;
+  bool _authCompletionPending = false, _authCompletionScheduled = false;
+  void _scheduleAuthCompletion() {
+    if (!_authCompletionPending || _authCompletionScheduled || !mounted) return;
+    _authCompletionScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _authCompletionScheduled = false;
+      if (!mounted || !_authCompletionPending) return;
+      final sessions = widget.sessions;
+      if (!sessions.isAuthenticated) {
+        _authCompletionPending = false;
+        return;
+      }
+      final ready =
+          widget.posts.available &&
+          widget.directory.status == ChannelDirectoryStatus.ready;
+      final failed =
+          !sessions.busy &&
+          widget.directory.status == ChannelDirectoryStatus.failure;
+      if (!ready && !failed) return;
+      final navigator = _navigatorKey.currentState;
+      if (navigator == null) return;
+      _authCompletionPending = false;
+      navigator.popUntil((route) => route.isFirst);
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
   bool _securityRouteOpen = false;
   bool _devicesRouteOpen = false, _closureRouteOpen = false;
   bool _identityRouteOpen = false;
@@ -712,6 +739,7 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
     if (widget.presentation == null) unawaited(_authPresentation.load());
     WidgetsBinding.instance.addObserver(this);
     _postRouteChanges = Listenable.merge([_postWindow, widget.directory]);
+    _postRouteChanges.addListener(_scheduleAuthCompletion);
     widget.posts.addListener(_postWindowChanged);
     _postWindowChanged();
     widget.sessions.addListener(_sessionRouteChanged);
@@ -735,6 +763,7 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
 
   void _postWindowChanged() {
     _schedulePostLink();
+    _scheduleAuthCompletion();
     final posts = widget.posts;
     final account = posts.accountId;
     if (posts.available && account != null && posts.timelineLoading) {
@@ -766,6 +795,7 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
       sessions.authorityVersion,
       sessions.isAuthenticated,
     );
+    _scheduleAuthCompletion();
     if (_logoutRoutePending &&
         !sessions.busy &&
         !sessions.isAuthenticated &&
@@ -836,13 +866,16 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
               onModerationAccess: widget.governance?.restrictedAccess == null
                   ? null
                   : () => unawaited(_openMessages()),
-              onAuthenticated: () =>
-                  Navigator.of(context).popUntil((route) => route.isFirst),
+              onAuthenticated: () {
+                _authCompletionPending = true;
+                _scheduleAuthCompletion();
+              },
               onManageSecurity: _openSecurity,
             ),
           ),
         )
         .whenComplete(() {
+          _authCompletionPending = false;
           _authRouteOpen = false;
           if (mounted) _schedulePostLink();
         });
@@ -1055,6 +1088,7 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     widget.comments?.dispose();
     widget.posts.removeListener(_postWindowChanged);
+    _postRouteChanges.removeListener(_scheduleAuthCompletion);
     _postWindow.dispose();
     widget.management.dispose();
     widget.identities.dispose();
@@ -1183,6 +1217,9 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
             }
             return EntryScreen(
               directory: widget.directory,
+              showFailureDialog:
+                  !_logoutRoutePending &&
+                  widget.sessions.status != AuthStatus.signedOut,
               restoringSession:
                   widget.sessions.status == AuthStatus.starting ||
                   widget.sessions.status == AuthStatus.restoring,

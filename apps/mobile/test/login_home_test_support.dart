@@ -261,7 +261,10 @@ class HomeTestFixture {
     }
     expect(sessions.isAuthenticated, isTrue);
     expect(store.current!.session!.accountId, account);
-    expect(find.byType(AuthScreen), findsNothing);
+    expect(
+      find.byType(AuthScreen),
+      directoryPending ? findsOneWidget : findsNothing,
+    );
     expect(find.byType(SettingsScreen), findsNothing);
     expect(find.byType(PersonalPostsScreen), findsNothing);
     if (directoryPending) return;

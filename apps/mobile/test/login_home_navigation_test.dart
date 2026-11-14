@@ -152,6 +152,46 @@ void main() {
     await disposeApp(tester);
   });
 
+  testWidgets('login stays on its form until the home directory is ready', (
+    tester,
+  ) async {
+    final f = HomeTestFixture();
+    f.channels.wait = Completer<ChannelDirectoryResult>();
+    await tester.pumpWidget(await f.create(signedIn: false));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('auth-start')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).at(0), 'device_a');
+    await tester.enterText(
+      find.byType(TextFormField).at(1),
+      'valid-password-123',
+    );
+    await tester.tap(find.byKey(const ValueKey('login-submit')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(f.sessions.isAuthenticated, isTrue);
+    expect(find.byType(AuthScreen), findsOneWidget);
+    expect(find.byType(AuthWelcomeScreen), findsNothing);
+    expect(find.text('账号已登录'), findsNothing);
+    expect(find.byType(FeedScreen), findsNothing);
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const ValueKey('login-submit')))
+          .onPressed,
+      isNull,
+    );
+
+    f.channels.wait!.complete(
+      await IdentityTestChannels().loadChannels(
+        sessionToken: identityTestOtherToken,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expectHome(tester, f);
+    await disposeApp(tester);
+  });
+
   testWidgets('settings logout confirms before reaching stable welcome', (
     tester,
   ) async {
@@ -201,6 +241,35 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     expect(find.byType(AuthWelcomeScreen), findsOneWidget);
     expect(find.byType(AuthScreen, skipOffstage: false), findsNothing);
+    await disposeApp(tester);
+  });
+
+  testWidgets('logout never presents the entry failure dialog', (tester) async {
+    final f = HomeTestFixture();
+    await tester.pumpWidget(await f.create());
+    await tester.pumpAndSettle();
+    await openLogoutSetting(tester);
+    await tester.tap(find.byKey(const ValueKey('settings-logout')));
+    await tester.pumpAndSettle();
+    final finishRead = Completer<void>();
+    f.vault.nextReadWait = finishRead;
+    await tester.tap(find.byKey(const ValueKey('settings-logout-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(f.vault.readBlocked.isCompleted, isTrue);
+    expect(f.sessions.busy, isTrue);
+    expect(
+      find.byKey(const ValueKey('entry-unavailable-dialog')),
+      findsNothing,
+    );
+    finishRead.complete();
+    await tester.pumpAndSettle();
+    expect(f.sessions.status, AuthStatus.signedOut);
+    expect(find.byType(AuthWelcomeScreen), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('entry-unavailable-dialog')),
+      findsNothing,
+    );
     await disposeApp(tester);
   });
 
