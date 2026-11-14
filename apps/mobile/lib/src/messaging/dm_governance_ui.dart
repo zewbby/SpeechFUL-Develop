@@ -190,6 +190,12 @@ class _DmBlacklistScreenState extends State<DmBlacklistScreen> {
       ),
     );
     if (!removed) return;
+    setState(() {
+      _authors = [
+        for (final author in _authors ?? const <BlockedAuthor>[])
+          if (author.blockId != item.blockId) author,
+      ];
+    });
     await _load();
     unawaited(posts.reloadVisibleFeeds());
   }
@@ -224,7 +230,7 @@ class _DmBlacklistScreenState extends State<DmBlacklistScreen> {
           body = _notice(hhText(context, '会话已变化，请重新进入'));
         } else if (_busy && _authors == null) {
           body = const Center(child: CircularProgressIndicator());
-        } else if (_error != null && _authors == null) {
+        } else if (_error != null && (_authors?.isEmpty ?? true)) {
           body = _notice(hhText(context, _error!), retry: true);
         } else if (_authors?.isEmpty != false) {
           body = _empty(palette);
@@ -266,6 +272,11 @@ class _DmBlacklistScreenState extends State<DmBlacklistScreen> {
             children: [
               if (_busy && _authors != null)
                 const LinearProgressIndicator(minHeight: 2),
+              if (_error != null && _authors?.isNotEmpty == true)
+                ListTile(
+                  title: Text(hhText(context, _error!)),
+                  onTap: _load,
+                ),
               Expanded(child: body),
             ],
           ),

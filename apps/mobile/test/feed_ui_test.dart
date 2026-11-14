@@ -1494,4 +1494,48 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('暂无记录'), findsOneWidget);
   });
+  testWidgets('blacklist drops the unblocked row when refresh fails', (
+    tester,
+  ) async {
+    final f = await FeedFixture.create();
+    addTearDown(f.dispose);
+    f.api.authorBlocks.add(
+      BlockedAuthor(
+        blockId: FeedTestApi.blockedAuthorId,
+        author: author,
+        blockedAt: at,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: HhTelegramTheme.create(Brightness.light),
+        home: DmBlacklistScreen(posts: f.controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+    f.api.blockedAuthorsFailure = const PostFailure(
+      kind: PostFailureKind.transport,
+    );
+    await tester.tap(
+      find.byKey(
+        const ValueKey('author-unblock:${FeedTestApi.blockedAuthorId}'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('author-unblock-confirm')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(
+        const ValueKey('author-block:${FeedTestApi.blockedAuthorId}'),
+      ),
+      findsNothing,
+    );
+    expect(find.text('暂无记录'), findsNothing);
+    expect(find.text('黑名单读取失败，请重试'), findsOneWidget);
+    f.api.blockedAuthorsFailure = null;
+    await tester.tap(find.text('黑名单读取失败，请重试'));
+    await tester.pumpAndSettle();
+    expect(find.text('暂无记录'), findsOneWidget);
+  });
 }
