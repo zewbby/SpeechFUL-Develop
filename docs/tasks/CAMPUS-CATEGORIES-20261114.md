@@ -1,7 +1,7 @@
 # CAMPUS-CATEGORIES-20261114 - 优化校园分类
 
 - 模式：常规；负责人／状态维护人：当前 Session。
-- 分支／Worktree／PR：`codex/feat/campus-category-labels`；`E:/code_collection/java_code/SpeechFUL.git`；PR 待创建。实际基线为私有仓库 `zewbby/SpeechFUL-Develop` 的 `main@2fdf8f6a2b62d708d229e3fc372081df39f85bd0`，远端别名 `develop`；公开 `origin` 保留，不向其推送。
+- 分支／Worktree／PR：`codex/feat/campus-category-labels`；`E:/code_collection/java_code/SpeechFUL.git`；[私有 PR #151](https://github.com/zewbby/SpeechFUL-Develop/pull/151)（draft）。实际基线为 `zewbby/SpeechFUL-Develop` 的 `main@2fdf8f6a2b62d708d229e3fc372081df39f85bd0`，远端别名 `develop`；公开 `origin` 保留，未向其推送。
 - 授权依据与边界：用户要求“新建分支，优化分类页面的标签，然后PR”，并指定 `https://github.com/zewbby/SpeechFUL-Develop.git`；授权开发、验证、提交、推送任务分支及创建 PR。不合并、不部署、不修改正式数据。
 - 需求确认：用户逐项指定七个原分类的新名称及三个新增分类，按提供顺序展示；原分类保留 UUID 和 code，不迁移旧帖归属。示例说明分类语义，不自动建立固定主题标签或内容分类器。沿用既有布局、浏览与发帖独立选择、初始可见标志和权限检查；所有十类均可在完整目录选择。新增三类沿用非首批分类的初始标志，不自动改变用户筛选。无未决产品取舍。
 - 更新日期：2026-11-14。
@@ -29,7 +29,7 @@
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
 | 基线与范围 | `2fdf8f6`；Windows | PASS：私有主线、干净工作区、远端与任务分支已核对；公开仓库为快照，未向其推送。 |
-| 实现 | `2fdf8f6` 加本任务提交的产品／测试／迁移差异 | 已完成：目录七类改名＋三类新增；原标识保留；屏蔽／搜索／热榜十类容量；十分类压缩搜索游标及旧游标解码；0040 正式迁移和运行时版本要求。 |
+| 实现 | 产品提交 `834a7cc87ad6bc9fe0f54ee8aac4912a1bb35034`，基线 `2fdf8f6` | 已完成：目录七类改名＋三类新增；原标识保留；屏蔽／搜索／热榜十类容量；十分类压缩搜索游标及旧游标解码；0040 正式迁移和运行时版本要求。后续仅任务记录链接更新不改变此产品证据版本。 |
 | Go 聚焦回归 | 同基线＋最终 Go 差异；Windows；`go -C services/api test -mod=readonly ./internal/channels ./internal/posts ./internal/rankings` | PASS；含十分类目录、十分类热榜元数据、最大计数搜索游标与旧格式解码。Redis 真实实例用例因无专用 fixture SKIP。 |
 | Go Linux 静态检查 | 同基线＋最终 Go 差异；`GOOS=linux go -C services/api build -mod=readonly ./...`、`go -C services/api vet -mod=readonly ./...` | PASS；编译与 vet 包含关联测试代码，不证明 Linux 测试或真实 SQL 已执行。Windows 全包测试受既有 `syscall.Flock` 平台依赖阻断，未修改该边界。 |
 | Flutter 聚焦及关联回归 | Flutter 3.47.5／Dart 3.13.4；同基线＋最终 Flutter 逻辑差异；`flutter test --no-pub`，见下方文件清单 | PASS：界面等 8 文件 125 项；认证 API 48 项单独复跑通过，共 173 项。首轮认证 API 初始化因 PATH 缺 OpenSSL 受阻，追加已有 Git OpenSSL 后复跑；不是产品失败。 |
@@ -43,4 +43,4 @@ Flutter 文件清单：`campus_categories_test.dart`、`publish_category_test.da
 
 ## 阻碍与下一步
 
-提交并向 `SpeechFUL-Develop` 创建 draft PR，等待当前 head 的适用产品 CI；不向公开仓库推送。真实 SQL／Android 的缺口保持待验。迁移不支持向下回滚；部署时必须安排旧客户端更新，先交付兼容七／十分类的新客户端，再协调后端迁移和完整服务端切换；不能将旧七分类客户端直接视为十分类兼容。无合并或正式部署授权。
+已提交并推送到 `SpeechFUL-Develop`，创建 draft PR #151；适用产品 CI 的当前结果以 [PR 检查](https://github.com/zewbby/SpeechFUL-Develop/pull/151/checks)为准，不向公开仓库推送。真实 SQL／Android 的缺口保持待验。迁移不支持向下回滚；部署时必须安排旧客户端更新，先交付兼容七／十分类的新客户端，再协调后端迁移和完整服务端切换；不能将旧七分类客户端直接视为十分类兼容。无合并或正式部署授权。
