@@ -1071,7 +1071,7 @@ const communitySettingsTranslations = <String, (String, String, String)>{
   '{v0}{v1}{v2}': ('{v0}{v1}{v2}', '{v0}{v1}{v2}', '{v0}{v1}{v2}'),
   '校园吐槽': ('校園吐槽', 'Campus venting', 'キャンパスのつぶやき'),
   '避雷指南': ('避雷指南', 'Heads-up guide', '注意ガイド'),
-  '海大安利': ('海大推薦', 'HNU recommendations', '海南大学のおすすめ'),
+  '吐血推荐': ('吐血推薦', 'Highly recommended', '激推し'),
   '搭子寻觅': ('夥伴尋覓', 'Find a buddy', '仲間探し'),
   '情感树洞': ('情感樹洞', 'Heart-to-heart', '気持ちの相談室'),
   '互助问答': ('互助問答', 'Community Q&A', '助け合いQ&A'),

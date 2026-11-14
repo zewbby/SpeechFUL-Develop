@@ -7,7 +7,7 @@ import (
 )
 
 func TestCampusCatalogNamesAndStableIDs(t *testing.T) {
-	names := []string{"校园吐槽", "避雷指南", "海大安利", "搭子寻觅", "情感树洞", "互助问答", "人工智能", "社团活动", "求职经验", "校友评论"}
+	names := []string{"校园吐槽", "避雷指南", "吐血推荐", "搭子寻觅", "情感树洞", "互助问答", "人工智能", "社团活动", "求职经验", "校友评论"}
 	items := make([]Channel, len(names))
 	for i, entry := range expectedCatalog {
 		items[i] = Channel{ID: entry.id, Code: entry.code, Name: entry.name, DisplayOrder: entry.displayOrder, InitiallyVisible: entry.initiallyVisible}

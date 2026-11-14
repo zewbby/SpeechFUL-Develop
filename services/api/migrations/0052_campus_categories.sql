@@ -4,7 +4,7 @@ SET name = labels.name, updated_at = now()
 FROM (VALUES
     ('vent', '校园吐槽'),
     ('warning', '避雷指南'),
-    ('recommendation', '海大安利'),
+    ('recommendation', '吐血推荐'),
     ('buddy', '搭子寻觅'),
     ('emotion', '情感树洞'),
     ('mutual_help', '互助问答'),

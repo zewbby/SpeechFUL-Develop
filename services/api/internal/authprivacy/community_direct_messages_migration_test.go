@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/channels"
 )
 
 // Reuses the runner's two dedicated, empty upgrade databases. This test is
@@ -44,7 +45,9 @@ func TestDMGooseFreshAndUpgradePostgres(t *testing.T) {
 			run := func(command string, args ...string) error {
 				return exec.Command(tool, append([]string{"-dir", dir, "postgres", dsn, command}, args...)...).Run()
 			}
-			const snapshot = `SELECT md5(jsonb_build_object('accounts',(SELECT jsonb_agg(to_jsonb(a) ORDER BY account_id) FROM c_auth.accounts a),'preferences',(SELECT jsonb_agg(to_jsonb(p) ORDER BY account_id) FROM c_posts.feed_preferences p),'channels',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM public.channels c))::text)`
+			// 0040 changes labels and adds categories; preserve every original
+			// category field except its label and update timestamp.
+			const snapshot = `SELECT md5(jsonb_build_object('accounts',(SELECT jsonb_agg(to_jsonb(a) ORDER BY account_id) FROM c_auth.accounts a),'preferences',(SELECT jsonb_agg(to_jsonb(p) ORDER BY account_id) FROM c_posts.feed_preferences p),'channels',(SELECT jsonb_agg(to_jsonb(c)-ARRAY['name','updated_at'] ORDER BY id) FROM public.channels c WHERE display_order<=70))::text)`
 			var before string
 			if mode == "upgrade" {
 				if err = run("up-to", "22"); err != nil {
@@ -83,6 +86,9 @@ func TestDMGooseFreshAndUpgradePostgres(t *testing.T) {
 			}
 			if count(t, pool, `SELECT count(*) FROM public.goose_db_version WHERE is_applied`) != 52 || count(t, pool, `SELECT max(version_id) FROM public.goose_db_version WHERE is_applied`) != 52 {
 				t.Fatal("migration chain incomplete")
+			}
+			if _, err = channels.NewService(channels.NewPostgresRepository(pool)).List(ctx); err != nil {
+				t.Fatal("category catalog after migration", err)
 			}
 			c := &Community{pool: pool}
 			if err = c.checkDMSchema(ctx); err != nil {

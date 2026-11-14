@@ -38,7 +38,7 @@ func (d *httpTestDirectory) setError(err error) {
 }
 func httpTestCatalog() []channels.Channel {
     codes:=[]string{"vent","warning","recommendation","buddy","emotion","mutual_help","technology","clubs","careers","alumni"}
-    names:=[]string{"校园吐槽","避雷指南","海大安利","搭子寻觅","情感树洞","互助问答","人工智能","社团活动","求职经验","校友评论"}
+    names:=[]string{"校园吐槽","避雷指南","吐血推荐","搭子寻觅","情感树洞","互助问答","人工智能","社团活动","求职经验","校友评论"}
     items:=make([]channels.Channel,10)
     for i:=range items {
         items[i]=channels.Channel{ID:uuid.MustParse(fmt.Sprintf("5f6f4f88-8f64-4bb2-9d34-%012d",i+1)),Code:codes[i],Name:names[i],InitiallyVisible:i<5,DisplayOrder:10*(i+1)}

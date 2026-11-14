@@ -178,6 +178,20 @@ class Lab:
             self.run(['go', 'build', '-mod=readonly', '-o', self.root / 'bin' / (prefix + name),
                       './cmd/' + package], 'build-' + prefix + name, cwd=source / 'services/api')
 
+    def export_rollback_source(self, rollback_ref):
+        archive = self.root / 'rollback.tar'
+        with archive.open('wb') as stream:
+            # Mobile LFS assets are not needed to build the rollback services.
+            subprocess.run(['git', '-C', self.source, 'archive', rollback_ref, 'services/api'],
+                           stdout=stream, check=True)
+        with tarfile.open(archive) as tar:
+            members = [m for m in tar.getmembers() if m.name.startswith('services/api/')]
+            for member in members:
+                if member.issym() or member.islnk() or not (self.root / 'rollback-source' / member.name).resolve().is_relative_to(self.root / 'rollback-source'):
+                    raise RuntimeError('unsafe source archive')
+            tar.extractall(self.root / 'rollback-source', members=members)
+        archive.unlink()
+
     def init(self, rollback_ref):
         if self.state is not None or self.root.exists():
             raise RuntimeError('init requires a new root')
@@ -210,17 +224,7 @@ class Lab:
         self.build(self.source, 'candidate-')
         for name in ('authdev', 'runtimeprobe'):
             self.run(['go', 'build', '-mod=readonly', '-o', self.root / 'bin' / name, './cmd/' + name], 'build-' + name)
-        archive = self.root / 'rollback.tar'
-        with archive.open('wb') as stream:
-            subprocess.run(['git', '-C', self.source, 'archive', rollback_ref,
-                            'services/api'], stdout=stream, check=True)
-        with tarfile.open(archive) as tar:
-            members = [m for m in tar.getmembers() if m.name.startswith('services/api/')]
-            for member in members:
-                if member.issym() or member.islnk() or not (self.root / 'rollback-source' / member.name).resolve().is_relative_to(self.root / 'rollback-source'):
-                    raise RuntimeError('unsafe source archive')
-            tar.extractall(self.root / 'rollback-source', members=members)
-        archive.unlink()
+        self.export_rollback_source(rollback_ref)
         self.build(self.root / 'rollback-source', 'rollback-')
         args = [self.root / 'bin/authdev', 'init', '-dir', self.root / 'material']
         for key, flag in [('c', 'community-port'), ('v', 'verifier-port'), ('ci', 'community-internal-port'), ('vi', 'verifier-internal-port'), ('smtp', 'smtp-port')]:

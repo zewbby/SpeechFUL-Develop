@@ -14,7 +14,7 @@ import 'package:hnuhole_mobile/src/posts/x_feed_controls.dart';
 const _names = [
   '校园吐槽',
   '避雷指南',
-  '海大安利',
+  '吐血推荐',
   '搭子寻觅',
   '情感树洞',
   '互助问答',
