@@ -746,14 +746,14 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
   }
 
   final _sessionRouteWindow = ValueNotifier((AuthStatus.starting, 0, false));
-  bool _logoutLoginPending = false, _logoutLoginScheduled = false;
+  bool _logoutRoutePending = false, _logoutRouteScheduled = false;
   void _sessionRouteChanged() {
     final sessions = widget.sessions;
     if (_lastLogoutVersion != sessions.logoutVersion) {
       _lastLogoutVersion = sessions.logoutVersion;
       _postLinks.clear();
       _promptedPostLink = null;
-      _logoutLoginPending = true;
+      _logoutRoutePending = true;
     }
     _schedulePostLink();
     // Expiry persistence still notifies its consumers, but renewing the same
@@ -763,28 +763,30 @@ class _HnuholeAppState extends State<HnuholeApp> with WidgetsBindingObserver {
       sessions.authorityVersion,
       sessions.isAuthenticated,
     );
-    if (_logoutLoginPending &&
+    if (_logoutRoutePending &&
         !sessions.busy &&
         !sessions.isAuthenticated &&
-        !_logoutLoginScheduled) {
-      _logoutLoginScheduled = true;
+        !_logoutRouteScheduled) {
+      _logoutRouteScheduled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _logoutLoginScheduled = false;
+        _logoutRouteScheduled = false;
         if (!mounted ||
-            !_logoutLoginPending ||
+            !_logoutRoutePending ||
             widget.sessions.busy ||
             widget.sessions.isAuthenticated) {
           return;
         }
-        _logoutLoginPending = false;
-        if (_authRouteOpen) return;
+        _logoutRoutePending = false;
+        final storageFailure =
+            widget.sessions.status == AuthStatus.storageFailure;
+        if (storageFailure && _authRouteOpen) return;
         final navigator = _navigatorKey.currentState;
         if (navigator == null) {
-          _logoutLoginPending = true;
+          _logoutRoutePending = true;
           return;
         }
         navigator.popUntil((route) => route.isFirst);
-        _openAuth();
+        if (storageFailure) _openAuth();
       });
     }
   }

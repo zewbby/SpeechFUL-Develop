@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hnuhole_mobile/hnuhole_mobile.dart';
 import 'package:hnuhole_mobile/src/auth/auth_wordmark.dart';
+import 'package:hnuhole_mobile/src/auth/device_management_controller.dart';
+import 'package:hnuhole_mobile/src/auth/device_management_screen.dart';
 
 import 'identity_test_support.dart';
 import 'login_home_test_support.dart';
+import 'security_settings_test_support.dart';
 
 void expectHome(
   WidgetTester tester,
@@ -56,6 +59,19 @@ Future<void> pickChannel(WidgetTester tester, String id) async {
 Future<void> disposeApp(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump();
+}
+
+Future<void> openLogoutSetting(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('feed-account')));
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(
+    find.byKey(const ValueKey('settings-logout')),
+    100,
+    scrollable: find.descendant(
+      of: find.byKey(const ValueKey('settings-list')),
+      matching: find.byType(Scrollable),
+    ),
+  );
 }
 
 void main() {
@@ -124,6 +140,113 @@ void main() {
     expect(f.sessionApi.logins, 1);
     expectHome(tester, f);
     expect(f.postApi.calls, contains('feed:recommended:first:20'));
+    await disposeApp(tester);
+  });
+
+  testWidgets('settings logout lands on welcome with no protected back stack', (
+    tester,
+  ) async {
+    final f = HomeTestFixture();
+    await tester.pumpWidget(await f.create());
+    await tester.pumpAndSettle();
+    await openLogoutSetting(tester);
+    await tester.tap(find.byKey(const ValueKey('settings-logout')));
+    await tester.pumpAndSettle();
+
+    expect(f.sessions.status, AuthStatus.signedOut);
+    expect(f.store.current!.session, isNull);
+    expect(find.byType(AuthWelcomeScreen), findsOneWidget);
+    expect(find.byKey(const ValueKey('auth-start')), findsOneWidget);
+    expect(find.byType(AuthScreen, skipOffstage: false), findsNothing);
+    expect(find.byType(FeedScreen, skipOffstage: false), findsNothing);
+    expect(find.byType(SettingsScreen, skipOffstage: false), findsNothing);
+    final context = tester.element(find.byType(AuthWelcomeScreen));
+    expect(ModalRoute.of(context)!.isFirst, isTrue);
+    expect(Navigator.of(context).canPop(), isFalse);
+    await disposeApp(tester);
+  });
+
+  testWidgets('device logout clears nested protected routes to welcome', (
+    tester,
+  ) async {
+    final f = HomeTestFixture();
+    await tester.pumpWidget(await f.create());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('今天的校园'));
+    await tester.pumpAndSettle();
+    final navigator = Navigator.of(
+      tester.element(find.byType(PostDetailScreen)),
+    );
+    final controller = DeviceManagementController(
+      api: SecuritySettingsApi(),
+      store: f.store,
+      sessions: f.sessions,
+    );
+    unawaited(
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => DeviceManagementScreen(
+            controller: controller,
+            sessions: f.sessions,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('退出本机'));
+    await tester.pumpAndSettle();
+
+    expect(f.sessions.status, AuthStatus.signedOut);
+    expect(find.byType(AuthWelcomeScreen), findsOneWidget);
+    expect(find.byType(AuthScreen, skipOffstage: false), findsNothing);
+    expect(
+      find.byType(DeviceManagementScreen, skipOffstage: false),
+      findsNothing,
+    );
+    expect(find.byType(PostDetailScreen, skipOffstage: false), findsNothing);
+    expect(navigator.canPop(), isFalse);
+    await disposeApp(tester);
+    controller.dispose();
+  });
+
+  testWidgets('revocation retry does not navigate away from welcome', (
+    tester,
+  ) async {
+    final f = HomeTestFixture();
+    f.sessionApi.revocationFailure = const AuthFailure(
+      kind: AuthFailureKind.timeout,
+    );
+    await tester.pumpWidget(await f.create());
+    await tester.pumpAndSettle();
+    await openLogoutSetting(tester);
+    await tester.tap(find.byKey(const ValueKey('settings-logout')));
+    await tester.pumpAndSettle();
+    expect(f.sessions.status, AuthStatus.signedOut);
+    expect(f.sessions.hasPendingLogout, isTrue);
+    expect(find.byType(AuthWelcomeScreen), findsOneWidget);
+    f.sessionApi.revocationFailure = null;
+    await f.sessions.retryPendingLogout();
+    await tester.pumpAndSettle();
+    expect(f.sessions.hasPendingLogout, isFalse);
+    expect(find.byType(AuthWelcomeScreen), findsOneWidget);
+    expect(find.byType(AuthScreen, skipOffstage: false), findsNothing);
+    await disposeApp(tester);
+  });
+
+  testWidgets('logout storage failure retains the error screen', (
+    tester,
+  ) async {
+    final f = HomeTestFixture();
+    await tester.pumpWidget(await f.create());
+    await tester.pumpAndSettle();
+    f.vault.failContaining = '"tokenDigest"';
+    await openLogoutSetting(tester);
+    await tester.tap(find.byKey(const ValueKey('settings-logout')));
+    await tester.pumpAndSettle();
+    expect(f.sessions.status, AuthStatus.storageFailure);
+    expect(find.byType(AuthScreen), findsOneWidget);
+    expect(find.byKey(const ValueKey('login-submit')), findsNothing);
+    expect(find.byType(FeedScreen, skipOffstage: false), findsNothing);
     await disposeApp(tester);
   });
 
