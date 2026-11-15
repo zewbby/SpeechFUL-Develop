@@ -20,6 +20,7 @@
   - 查询计划 A/B（同一隔离数据集副本：50,000 条互动记录、120,000 条点赞事件、5,000 条系统通知、账号 5 个身份；VACUUM ANALYZE 后热缓存）：未读统计 160.5 ms（选中身份 91.6 ms + 账号级逐身份 68.9 ms）→ 7.4 ms（分组 6.9 ms + 系统 0.5 ms）；全部列表 50.7 ms → 16.9 ms；未读列表 75.1 ms → 6.7 ms。基线每条 LIKE 通知一次 `like_events` 探测（选中 24,000 次、账号级 40,000 次，约 74k/122k shared buffers）；最终统计为 `Index Only Scan using inbox_unread`（324 buffers）。
   - 等价性：各身份未读数、选中身份 all/reply/like、系统计数与基线逐项一致；全部列表与未读列表前 21 条 ID/时间逐行 `diff` 一致。
   - 产品级 P95 与真机链路 `NOT_RUN`（需真实规模数据与客户端联调）。
+  - 产品 CI：PR [#5](https://github.com/zewbby/SpeechFUL-Develop/pull/5) head `3b25645` 的 21 项检查 20 success、1 skip（`actual-process-acceptance` 按设计跳过）。
 - 回滚：`git revert 44243ca`（本条目实现提交；随后追加的文档提交仅记录该 SHA）。0045 的 Down 与 0028/0041/0042 一样拒绝回退；线上如需撤销读取路径，应按前向修复发布新的迁移恢复 0028 函数与查询，不要直接 `DROP COLUMN`。仅一次性开发库可在确认无依赖后执行 `DROP INDEX IF EXISTS c_inbox.inbox_unread; ALTER TABLE c_inbox.records DROP COLUMN IF EXISTS latest_like_version;` 并恢复 0028 定义。
 - 任务：`docs/tasks/REQ-007-NOTIFICATION-READ-ACCEL.md`
-- 授权：用户 2026-11-16 指令“继续完成07优化”（需求行“通知列表与未读统计优化”）；仅本地提交，未 push、未建 PR、未合并、未部署。
+- 授权：用户 2026-11-16 指令“继续完成07优化”（需求行“通知列表与未读统计优化”）；随后指令“完成后向仓库提交pr”。已推送 `perf/notification-read-accel` 并创建 PR #5；未合并、未部署。
