@@ -332,8 +332,9 @@ func (c *Community) postImagesReady(ctx context.Context, tx pgx.Tx, task uuid.UU
 	return ready, e
 }
 
-// No additional storage or public URL: the original read repeats the same
-// resource/session/Gate transaction before the bounded, stateless transform.
+// Thumbnails remain bounded stateless transforms without additional storage
+// or a public URL. Prepared reads authorize once after private CPU work;
+// the legacy path retains its original final resource/session/Gate recheck.
 func (c *Community) PostImageThumbnailsEnabled() bool {
 	if !c.PostImagesEnabled() {
 		return false

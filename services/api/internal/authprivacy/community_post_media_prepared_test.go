@@ -5,11 +5,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/postmedia"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/posts"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/readtiming"
@@ -251,6 +254,51 @@ func TestPreparedPostMediaRoutesAndFallbackPostgres(t *testing.T) {
 	}
 }
 
+func TestPreparedPostMediaRestrictedRuntimePostgres(t *testing.T) {
+	f := newPreparedMediaFixture(t)
+	mustExec(t, f.l.cp, `CREATE TABLE IF NOT EXISTS public.goose_db_version(version_id bigint,is_applied boolean);
+REVOKE CREATE,TEMP ON DATABASE hnuhole_c FROM PUBLIC,hnuhole_c_runtime,hnuhole_c_recovery,hnuhole_business`)
+	for _, name := range []string{"grant-community.sql", "grant-comments.sql", "grant-post-images.sql"} {
+		body, err := os.ReadFile("../../../../infra/postgres/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mustExec(t, f.l.cp, string(body))
+	}
+	dsn := os.Getenv("AUTHLAB_POSTS_RUNTIME_DSN")
+	if dsn == "" {
+		t.Fatal("prepared media requires its owned least-privilege runtime fixture")
+	}
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	clone := *f.l.c
+	clone.pool, clone.postImages = pool, nil
+	enabled, err := clone.WithPosts(context.Background(), f.config)
+	if err != nil {
+		t.Fatal("runtime prepared-media schema checks failed", err)
+	}
+	enabled, err = enabled.WithPostImages(context.Background(), f.l.c.postImages.validator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.l.c = enabled
+	for _, route := range []string{"manifest", "original", "thumbnail"} {
+		ctx, trace := readtiming.Start(context.Background())
+		r, e := readPreparedMediaRoute(ctx, f, route)
+		if e != nil || r.Value == nil || preparedMediaCalls(trace.Snapshot(), "prepare_read") != 1 {
+			t.Fatal("runtime media did not use its formally enabled prepared path", route, e)
+		}
+	}
+	_, err = pool.Exec(context.Background(), `UPDATE c_posts.read_feed_post_versions SET projection_revision=projection_revision+1`)
+	var denied *pgconn.PgError
+	if !errors.As(err, &denied) || denied.Code != "42501" {
+		t.Fatal("runtime unexpectedly wrote authoritative read versions")
+	}
+}
+
 func TestPreparedPostMediaCPUAuthorityAndConflictsPostgres(t *testing.T) {
 	for _, mode := range []string{"success", "delete", "delete_cpu_error", "edit_once", "edit_twice", "cancel", "session_generation", "freeze", "commit_ack_loss"} {
 		t.Run(mode, func(t *testing.T) {
@@ -313,6 +361,9 @@ func TestPreparedPostMediaCPUAuthorityAndConflictsPostgres(t *testing.T) {
 			case "commit_ack_loss":
 				if !errors.Is(err, ErrAuthorizationUnavailable) {
 					t.Fatal(err)
+				}
+				if preparedMediaCalls(trace.Snapshot(), "prepare_read") != 1 || preparedMediaCalls(trace.Snapshot(), "anchor_write") != 1 || preparedMediaCalls(trace.Snapshot(), "sql_commit") != 1 {
+					t.Fatal("ACK loss did not reach the one native final checkpoint")
 				}
 				select {
 				case <-proxy.dropped:
