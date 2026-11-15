@@ -7,8 +7,9 @@
 - 本轮规则版本：`69d2adcf4b153601ba218de87bb6efccd91da5c8` 的 AGENTS.md、CONTRIBUTING.md、仓库 `.agents/skills/orchestrator/SKILL.md` 及 references。能力：可创建子 Agent、传递消息、读取结果；每位写入执行者使用独立分支与 Worktree。
 - 需求来源：用户提供的 `C:/Users/24237/Desktop/需求/01-core-authorization.md`，标题“核心请求授权临界区优化”，对应 P0-01。附件为方案草案；其中流程文字不视为执行、部署或扩大范围的授权。
 - 需求确认：2026-11-15，用户在两项结构化问题中明确选择：①共用两阶段基座＋评论读取先验收，再接首页和图片，最终完成需求001整体范围；②改造路径 Gate 实际持锁 p95 降低至少50%、其他用户首页 p95 降低至少30%，均作为最终硬门槛，负载和数据规模在基线阶段固定。当前无影响本计划的未决产品取舍。
+- 验证判断补充：用户要求反复性能失败却无明显原因时及时停下重思方向，并明确由总指挥根据证据判断，不能因这一提醒直接停工或机械新增“首次未达即停止”。预先固定的重复轮次与失败后无新假设的重复重跑分别对待；根据失败是否重复、新线索及验证价值决定下一步，不能挑选成功轮次替代失败。
 - 更新日期：2026-11-15。
-- 状态：M1 功能／安全聚焦验收 PASS，性能验收待定位环境时间异常；M2／M3 仅完成只读关键设计，源码接入未开始；未合并；未发布。
+- 状态：M1 功能／安全聚焦验收 PASS，性能验收 BLOCKED（WSL 三钟不一致）；隔离 Linux CI 对照入口已完成本地准备，远端产品／性能 CI 尚未执行。M2／M3 仅完成只读关键设计，源码接入未开始；未合并；未发布。
 
 ## 目标与范围
 
@@ -94,15 +95,21 @@
 | 计划与确认 | 2026-11-15 当前用户消息及两项结构化回复 | PASS：确认阶段顺序与最终硬门槛；本记录为本任务唯一计划和状态入口 |
 | 关键事务设计 | GPT-6 Astra＋xhigh；v3 4a145f45 | PASS（设计审查）：确认八类 M1 生产源写共用 C Gate，明确直接 owner SQL 不在并发业务假设内；不替代产品验收 |
 | 仪表 | 原执行提交 e8aeadd；集成 9de07c7 | PASS：真实 SQL 锁阻塞＋Abort、单检查点与成功／拒绝／panic／取消聚焦回归；/home/hnuhole/req001-baseline-20261115/artifacts/observation-sql-tests.log。客户端观察边界为锁查询成功响应至事务结束响应，非数据库内部纳秒精度 |
-| 旧路径主基线 | 执行源码 5c3e9a8；WSL Linux；真实 PG16／Redis／Pillow；GOMAXPROCS=4、12连接、4用户四路径1:1:1:1、1000评论＋1000条评论点赞、20帖、10预热＋80测量波、三轮 | PASS：三轮均320请求、0失败。评论每请求累计持锁p95为144.60／154.10／137.59ms，另一用户首页p95为250.16／249.52／232.33ms；每次读含两次Gate锁。该主负载复用Redis nonce、并发写为同帖的帖子点赞，不冒充fresh初建或评论排序冲突验收 |
-| 基线规模检查 | 同源码；50／10000评论；各8波 | PASS（通路／规模检查）：0失败；样本量不足以单独证明p95门槛。所有原始JSON及日志在/home/hnuhole/req001-baseline-20261115/artifacts |
+| 旧路径主基线 | 执行源码 5c3e9a8；WSL Linux；真实 PG16／Redis／Pillow；GOMAXPROCS=4、12连接、4用户四路径1:1:1:1、1000评论＋1000条评论点赞、20帖、10预热＋80测量波、三轮 | 历史运行 PASS：三轮均320请求、0失败。评论每请求累计持锁p95为144.60／154.10／137.59ms，另一用户首页p95为250.16／249.52／232.33ms；每次读含两次Gate锁。该主负载复用Redis nonce、并发写为同帖的帖子点赞，不冒充fresh初建或评论排序冲突验收。追溯无大于250ms波间异常，但当时无逐请求三钟结束边界，不作为当前稳定环境硬门槛证明 |
+| 基线规模检查 | 同源码；50／10000评论；各8波 | 历史通路0失败；10000条cohort追溯发现约10.980秒异常墙钟缺口，环境 INVALID，不用于性能结论。50条仅通路／规模检查，8波不足以单独证明p95门槛。原文件保留于/home/hnuhole/req001-baseline-20261115/artifacts |
 | M1版本／权限基座 | 51dc950＋83fdd7a；/home/hnuhole/req001-integration-20261115；一次性PG55533 | PASS：真实-race SQL发布／点赞依赖分离、回滚、历史回填；runtime只读、角色审计、列级越权、WHEN(false)／空函数体负例。schema-tests.log与schema-audit-tests.log。无HTTP用例时明确显示no tests to run，不计HTTP通过 |
-| M1读取切片 | 执行 a942d32b；集成250b9b4；当前集成74d8536含最新测量harness | 已接入ReadComments主评／回复／续页与LocateComment；未接入私有任务／ReadCommentContext。执行者聚焦SQL与Redis回归进行中，独立Astra＋xhigh阶段安全复核进行中；尚未标记M1联合验收通过 |
+| M1读取切片 | 执行 a942d32b；集成250b9b4；产品最后变更bf76d2a | 已接入ReadComments主评／回复／续页与LocateComment；未接入私有任务／ReadCommentContext。功能与阶段安全聚焦证据如下；联合验收仍受性能及远端CI门槛限制 |
 | M1功能／HTTPS／原生生命周期 | 产品bf76d2a；测试f5d46e2＋4e89783；HnuHole-Ubuntu-24.04独占SQL／Redis | PASS：三后端分页／回复／定位／回退、版本交错、过期／换代／封禁／注销申请、原生取消、真实COMMIT成功后丢ACK；后者允许已持久合法续期，但不返回正文／游标、不Publish新快照，补偿只影响新reservation。root HTTPS原／新两路主评／回复／nonce／续页／存储失败PASS；全后端build／vet PASS。日志在/home/hnuhole/req001-comment-reads-20261115/与/home/hnuhole/req001-integration-20261115/comment-https.log |
 | M1独立安全审查 | GPT-6 Astra＋xhigh；69d2adc→4e89783 | PASS（AI审查证据）：原定位回复恢复后旧404的P2已由bf76d2a修复且精确回归通过；原始日志／关键Linux文件摘要已核对，无未关闭确定缺陷。不代表GitHub成员批准或未测所有细粒度交错 |
+| 全后端单测 | 集成35941b5；WSL Linux；显式无外部DSN | PASS：go test -mod=readonly ./...；SQL用例按配置SKIP，不替代上方真实SQL证据。/home/hnuhole/req001-integration-20261115/unit-and-skipped-sql.log |
 | 性能诊断 | old84-fresh-likes与new0d-main-r3 | FAIL：旧wave27 feed／like两503，新wave50 image／like两503，Gate均OPEN；新SQLSTATE=57014。两波恰伴墙钟较Go／RAW多约11.145／11.217秒，真实10s SQL超时可能受环境时间不连续影响，具体原因待Message确认。其他成功cohort保留原证据，不剔除失败样本、不把部分轮次达门槛报整体PASS；B0补请求三钟guard和固定错误分类。汇总/home/hnuhole/req001-baseline-20261115/artifacts/b1-diagnostic-summary.json |
+| 三钟环境检查 | harness35941b5；同一WSL进程启动；独立纯计时复核 | BLOCKED：新主负载无请求／预热失败，但cohort墙钟／Go为12.356秒、RAW为13.479秒，环境INVALID。独立约5秒探针复现RAW／Go约1.090908，最大读钟括号不确定性4695ns；只读adjtimex显示tick=9167，不能归因于读钟起止调度。未修改系统时间、clocksource、超时或重试策略。原始b1-clock-environment-summary.json、pure-clock-probe.json与clock-retrospective-audit.json均保留 |
+| 隔离CI本地准备 | 4029181＋a9e1e63（原d352c22＋c0f09bad）；Linux与Windows聚焦检查 | PASS：Linux13项全通过，含真实leader退出后的后代清理；Windows10 PASS／3平台SKIP。精确旧69＋6文件白名单overlay、新4029181双archive编译PASS，performanceResult=NOT_RUN。4个仪表文件另固定已审内容SHA，防后续业务语义误入旧树。四项CI审查P2（链接图逃逸、超时丢已有样本、父进程退出后遗留后代、未知kind异常未裁决）均已修复并补负例。/home/hnuhole/req001-ci-prep-20261115/linux-unit-c0f09ba.log与ci-prep-validation-evidence.json绑定最终runner／tests字节；编译证据archive-compile-check-final/public，编译后唯一脚本统计保留修正不涉及Go源码或archive／compile路径 |
+| CI入口独立复核 | GPT-6 Astra＋xhigh；a9e1e63 | PASS（AI审查证据）：四项P2关闭，固定仪表SHA、完整配置／工具版本、全部失败样本保留及精确脱敏产物均核对；建议启用入口。仅覆盖CI代码，不代表性能达标、远端运行或GitHub成员批准 |
 | 远端CI／合并／发布 | 未推送本任务分支 | NOT_RUN；本地产品检查与远端CI分别记录；未合并、未发布 |
 
 ## 阻碍与下一步
 
-当前阻碍为性能验证环境时间不连续／偶发SQL取消；由B0和Astra只读诊断，保留所有失败并用墙钟／Go monotonic／RAW三钟检验下一稳定窗口，不能放宽SQL保护或以重试吞错。M1阶段验收通过后按已有授权继续M2／M3，不因阶段完成自动暂停。版本触发器仅在停写／受控迁移事务中安装，未接触正式数据。
+当前阻碍为WSL墙钟／Go monotonic与RAW时间不一致，现环境不适合证明性能硬门槛。B0与Astra已只读复核跨旧／新路径的失败及异常时间缺口；PG16绝对墙钟超时可解释短RAW耗时伴57014，但缺失败时服务端Message，具体取消来源未完全证实。停止在此环境重复性能采样，不放宽SQL保护、校正耗时或以重试吞错，也不改共享系统时钟。
+
+专用GitHub Ubuntu隔离CI的本地代码、聚焦回归与新旧archive编译已准备好：固定基线69d2adc与精确PR head，旧树仅白名单覆盖仪表／harness，三组主负载逐对判定50%／30%硬门槛，fresh与规模检查独立报告，错误与三钟异常均拒绝；不机械以单次阈值未达停止预先固定的三组对照。原始日志／数据库／证书留在一次性runner，上传仅固定脱敏JSON。下一步按仓库规则请求本任务Push／草稿PR／CI授权；尚未创建远端分支或PR。M1阶段验收通过后按已有授权继续M2／M3。版本触发器仅在停写／受控迁移事务中安装，未接触正式数据。
