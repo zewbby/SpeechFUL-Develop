@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 import os
+import platform
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -19,8 +20,16 @@ import signal
 import subprocess
 import sys
 import tarfile
+import time
 
 BASELINE = "69d2adcf4b153601ba218de87bb6efccd91da5c8"
+INSTRUMENTATION_COMMIT = "e8aeadd5134c0d1d2d6a5fc7cf9c9fca4059f832"
+INSTRUMENTATION_SHA256 = {
+    "services/api/internal/authprivacy/common.go": "cde78f3abb1f0cc96907c6b5d5486818f080b33f6b5d2828543fbcf8bc628418",
+    "services/api/internal/authprivacy/authorization_gate.go": "82da22126427e9f61e35fc905c1738667e52fe6385a6b2cbf7a6dc1944afcc29",
+    "services/api/internal/authprivacy/read_timing.go": "d724d3f48b24b62ef144dcc9547b3507815db5589afc44eaee68eecd2150a455",
+    "services/api/internal/readtiming/readtiming.go": "83fa1fde6d5a9ecde2c530bd109690b269d106e3dee6c5e8d1fe9bc35bc2ad0c",
+}
 OVERLAY = (
     "services/api/internal/authprivacy/common.go",
     "services/api/internal/authprivacy/authorization_gate.go",
@@ -34,6 +43,7 @@ KINDS = ("comments", "feed", "image", "like")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 STAGE = re.compile(r"[a-z_]+(?:\.[a-z_]+)*\Z")
 ERROR_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,79}\Z")
+TRANSACTION_SETTINGS = {"deadlock_timeout":"1s","lock_timeout":"5s","statement_timeout":"10s"}
 
 
 class ComparisonError(Exception):
@@ -118,11 +128,27 @@ def extract_archive(archive, destination):
                 links.append((target, member.linkname))
             else:
                 raise ComparisonError("unsupported_archive_entry")
+    created = []
     for target, link in links:
+        try:
+            if not inside(target.parent.resolve(), destination):
+                raise ComparisonError("archive_link_parent_escape")
+        except RuntimeError:
+            raise ComparisonError("archive_link_cycle")
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists() or target.is_symlink():
             raise ComparisonError("duplicate_archive_link")
         os.symlink(link, target)
+        created.append(target)
+        # A link which looked internal before another link existed may become
+        # an escape afterwards (a->., b->a/../outside). Check the whole graph
+        # after each insertion, before any later parent directory is created.
+        for existing in created:
+            try:
+                if not inside(existing.resolve(),destination):
+                    raise ComparisonError("archive_link_graph_escape")
+            except RuntimeError:
+                raise ComparisonError("archive_link_cycle")
 
 
 def archive_tree(source, sha, destination, archive):
@@ -148,6 +174,8 @@ def overlay_observation(old, new, paths=OVERLAY):
             raise ComparisonError("overlay_requires_regular_files")
         if not inside(source.resolve(), new.resolve()) or not inside(target.resolve(), old.resolve()):
             raise ComparisonError("overlay_escape")
+        if relative in INSTRUMENTATION_SHA256 and digest(source) != INSTRUMENTATION_SHA256[relative]:
+            raise ComparisonError("instrumentation_content_not_frozen")
         before = digest(target) if target.exists() else None
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
@@ -185,6 +213,7 @@ def quantiles(values):
 
 
 def public_sample(sample):
+    if not isinstance(sample,dict):sample={}
     result = {key: sample[key] for key in ("index", "elapsedNS", "wallStartNS", "wallEndNS", "wallElapsedNS", "rawElapsedNS", "wallGoDriftNS", "rawGoDriftNS")
               if type(sample.get(key)) is int}
     result["kind"] = sample.get("kind") if sample.get("kind") in KINDS else "unknown"
@@ -195,12 +224,44 @@ def public_sample(sample):
     if integer(sample.get("errorStatus")) and sample["errorStatus"] <= 599:
         result["errorStatus"] = sample["errorStatus"]
     observation = sample.get("observation", {})
+    if not isinstance(observation,dict):observation={}
+    stages=observation.get("stages",{})
+    if not isinstance(stages,dict):stages={}
     result["observation"] = {
         "clockValid": observation.get("clockValid") is True,
         "truncated": observation.get("truncated") is True,
         "stages": {name: {key: stage[key] for key in ("nanoseconds", "calls") if integer(stage.get(key))}
-                   for name, stage in observation.get("stages", {}).items() if STAGE.fullmatch(name) and isinstance(stage, dict)},
+                   for name, stage in stages.items() if isinstance(name,str) and STAGE.fullmatch(name) and isinstance(stage, dict)},
     }
+    return result
+
+
+def frozen_configuration(spec):
+    return {"comments":spec["comments"],"commentLikeRows":min(spec["comments"],1000),"sampleWaves":spec["samples"],
+            "warmupWaves":spec["warmup"],"poolMaxConns":12,"concurrency":4,"goMaxProcs":4,"posts":20,
+            "pageSize":50,"feedPageSize":20,"freshNonce":spec["fresh"],"commentSort":spec["sort"],
+            "mix":"comments:feed:image:like=1:1:1:1","snapshotBackend":"redis",
+            "likeTarget":"comment-like-same-post" if spec["commentLike"] else "post-like-same-post",
+            "goVersion":"go1.22.2"}
+
+
+def public_configuration(data, spec):
+    result = {}
+    for key, expected in frozen_configuration(spec).items():
+        value=data.get(key)
+        if type(expected) in (int,bool):
+            result[key]=value if type(value) is type(expected) else "invalid_type"
+        elif key=="goVersion":
+            result[key]=value if re.fullmatch(r"go[0-9]+\.[0-9]+(?:\.[0-9]+)?",str(value)) else "unrecognized"
+        else:
+            allowed={expected}
+            if key=="snapshotBackend":allowed|={"redis","postgres"}
+            if key=="commentSort":allowed|={"","relevant","recent","likes"}
+            if key=="likeTarget":allowed|={"comment-like-same-post","post-like-same-post"}
+            result[key]=value if isinstance(value,str) and value in allowed else "unrecognized"
+    settings=data.get("transactionSettings",{})
+    if not isinstance(settings,dict):settings={}
+    result["transactionSettings"]={key:settings.get(key) if re.fullmatch(r"[0-9]+(?:\.[0-9]+)?(?:ms|s|min|h|d)?",str(settings.get(key))) else "unrecognized" for key in TRANSACTION_SETTINGS}
     return result
 
 
@@ -222,10 +283,23 @@ def evaluate_cohort(data, spec, returncode, expected_source=None):
         reasons.append("wrong_source_commit")
     if type(data.get("warmupFailures")) is not list or data.get("warmupFailures"):
         reasons.append("warmup_failed")
-    if any(data.get(key) != expected for key, expected in (("comments", spec["comments"]), ("sampleWaves", spec["samples"]), ("warmupWaves", spec["warmup"]),
-                                                        ("poolMaxConns", 12), ("concurrency", 4), ("freshNonce", spec["fresh"]), ("commentSort", spec["sort"]))):
+    if any(type(data.get(key)) is not type(expected) or data.get(key)!=expected for key,expected in frozen_configuration(spec).items()):
         reasons.append("wrong_frozen_configuration")
-    samples = [public_sample(sample) for sample in data.get("samples", [])]
+    if data.get("transactionSettings")!=TRANSACTION_SETTINGS:
+        reasons.append("wrong_transaction_settings")
+    raw_samples=data.get("samples",[])
+    if not isinstance(raw_samples,list):raw_samples=[];reasons.append("samples_not_list")
+    if len(raw_samples)!=4*spec["samples"]:reasons.append("wrong_total_sample_count")
+    samples = [public_sample(sample) for sample in raw_samples]
+    # Judge every request before grouping. Unknown kinds must not disappear
+    # from the four accepted groups and silently hide failures or clock drift.
+    for sample in samples:
+        if sample["kind"] not in KINDS:reasons.append("unknown_sample_kind")
+        if sample["requestFailed"]:reasons.append("request_failed")
+        if not sample["clockStable"] or not sample["observation"]["clockValid"] or sample["observation"]["truncated"]:
+            reasons.append("invalid_sample_clock_or_trace")
+        times=[sample.get(key) for key in ("elapsedNS","wallElapsedNS","rawElapsedNS")]
+        if not all(integer(value) for value in times) or max(times)-min(times)>MAX_DRIFT_NS:reasons.append("sample_clock_drift")
     metrics = {}
     for kind in KINDS:
         selected = [sample for sample in samples if sample["kind"] == kind]
@@ -239,10 +313,10 @@ def evaluate_cohort(data, spec, returncode, expected_source=None):
             if sample["requestFailed"] or not observation["clockValid"] or observation["truncated"] or not sample["clockStable"]:
                 reasons.append("invalid_request_" + kind)
             times = [sample.get(key) for key in ("elapsedNS", "wallElapsedNS", "rawElapsedNS")]
+            if integer(sample.get("elapsedNS")):
+                elapsed.append(sample["elapsedNS"])
             if not all(integer(value) for value in times) or max(times) - min(times) > MAX_DRIFT_NS:
                 reasons.append("request_clock_drift_" + kind)
-            else:
-                elapsed.append(sample["elapsedNS"])
             if not integer(sample.get("wallStartNS")) or not integer(sample.get("wallEndNS")) or sample.get("wallEndNS",0)-sample.get("wallStartNS",0) != sample.get("wallElapsedNS"):
                 reasons.append("inconsistent_wall_bounds_" + kind)
             hold = sum(stage.get("nanoseconds", 0) for name, stage in stages.items() if name.endswith("gate_hold"))
@@ -258,6 +332,7 @@ def evaluate_cohort(data, spec, returncode, expected_source=None):
         metrics[kind] = {"elapsed": quantiles(elapsed), "gateHoldPerRequest": quantiles(holds), "readConflicts": conflicts, "readRebuilds": rebuilds,
                          "requestFailures": sum(sample["requestFailed"] for sample in selected)}
     return {"label": spec["label"], "spec": spec, "result": "FAIL" if reasons else "PASS", "reasons": sorted(set(reasons)),
+            "actualConfiguration":public_configuration(data,spec),
             "metrics": metrics, "samples": samples, "warmupFailures": [public_sample(sample) for sample in data.get("warmupFailures", [])],
             "cohortClock": {key: value for key, value in clock.items() if type(value) is int},
             "sourceCommit": data.get("sourceCommit") if SHA.fullmatch(str(data.get("sourceCommit", ""))) else "unknown"}
@@ -282,14 +357,22 @@ def compare_pair(old, new, enforce):
 
 
 def stop_child(child):
-    if child.poll() is not None:
-        return
-    os.killpg(child.pid, signal.SIGTERM)
+    # The shell leader may already have exited while Redis/Go descendants
+    # remain. Its session/group was created by us, so always address the group.
     try:
-        child.wait(timeout=30)
-    except subprocess.TimeoutExpired:
-        os.killpg(child.pid, signal.SIGKILL)
-        child.wait(timeout=10)
+        os.killpg(child.pid,signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:child.wait(timeout=30)
+    except subprocess.TimeoutExpired:pass
+    deadline=time.monotonic()+1
+    while time.monotonic()<deadline:
+        try:os.killpg(child.pid,0)
+        except ProcessLookupError:return
+        time.sleep(.02)
+    try:os.killpg(child.pid,signal.SIGKILL)
+    except ProcessLookupError:pass
+    child.wait(timeout=10)
 
 
 def public_artifacts(directory):
@@ -324,15 +407,31 @@ def run_cohort(tree, spec, head, private, media, python, redis):
     with (private / (spec["label"] + ".private.log")).open("xb") as log:
         child = subprocess.Popen(["sh", "authlab/run-read-critical-section-isolated.sh"], cwd=tree/"services/api", env=env,
                                  stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        termination="completed"
+        cleanup_failed=False
         try:
             code = child.wait(timeout=720)
+        except subprocess.TimeoutExpired:
+            termination="timeout";code=124
+        except InterruptedComparison as error:
+            termination="interrupted";code=128+error.signum
         finally:
-            stop_child(child)
+            try:stop_child(child)
+            except (OSError,subprocess.TimeoutExpired):cleanup_failed=True;code=code if termination!="completed" else 1
     try:
         data = json.loads(raw.read_text()) if raw.is_file() and not raw.is_symlink() else {}
     except (ValueError, OSError):
         data = {}
-    return evaluate_cohort(data, spec, code, head if spec["prepared"] else BASELINE)
+    report=evaluate_cohort(data,spec,code,head if spec["prepared"] else BASELINE)
+    report["termination"]=termination
+    report["processExitCode"]=code
+    if cleanup_failed:
+        report["result"]="FAIL"
+        report["reasons"].append("owned_group_cleanup_failed")
+    if termination!="completed":
+        report["result"]="FAIL"
+        report["reasons"].append("cohort_"+termination+"_no_retry")
+    return report
 
 
 def compile_trees(old, new, private):
@@ -342,8 +441,11 @@ def compile_trees(old, new, private):
     env = {key:value for key,value in env.items() if not key.startswith(("PG", "AUTHLAB_", "REQ001_", "POST_MEDIA_", "COMMENT_SNAPSHOT_"))}
     for label, tree in (("old",old),("new",new)):
         with (private/(label+"-compile.private.log")).open("xb") as log:
-            subprocess.run(["go","test","-mod=readonly","-run","^$","./internal/authprivacy"],cwd=tree/"services/api",env=env,
-                           stdout=log,stderr=subprocess.STDOUT,check=True,timeout=600)
+            child=subprocess.Popen(["go","test","-mod=readonly","-run","^$","./internal/authprivacy"],cwd=tree/"services/api",env=env,
+                                   stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+            try:
+                if child.wait(timeout=600):raise ComparisonError("compile_failed")
+            finally:stop_child(child)
 
 
 def executable_path(value):
@@ -352,6 +454,23 @@ def executable_path(value):
     if value is None or not value.is_absolute() or not value.is_file() or not os.access(value,os.X_OK):
         raise ComparisonError("absolute_executable_required")
     return value
+
+
+def tool_versions(python,redis,prepare_only):
+    result={"runnerOS":os.environ.get("RUNNER_OS",platform.system()),"runnerArch":os.environ.get("RUNNER_ARCH",platform.machine())}
+    if result["runnerOS"]!="Linux" or result["runnerArch"] not in ("X64","x86_64","AMD64"):
+        raise ComparisonError("unexpected_runner_platform")
+    def read(command,pattern):
+        raw=subprocess.run(command,capture_output=True,check=True,timeout=15).stdout.decode().strip()
+        match=re.search(pattern,raw)
+        if not match:raise ComparisonError("unexpected_tool_version")
+        return match.group(1)
+    result["goVersion"]=read(["go","version"],r"^go version (go1\.22\.2) linux/amd64$")
+    if not prepare_only:
+        result["postgresVersion"]=read(["pg_ctl","--version"],r"^pg_ctl \(PostgreSQL\) (16\.[0-9]+)")
+        result["redisVersion"]=read([str(redis),"--version"],r"^Redis server v=(7\.[0-9]+\.[0-9]+)")
+        result["pillowVersion"]=read([str(python),"-c","import PIL;print(PIL.__version__)"],r"^(12\.3\.0)$")
+    return result
 
 
 def run(args):
@@ -372,6 +491,9 @@ def run(args):
                "performanceResult":"NOT_RUN","prepareOnly":args.prepare_only}
     exit_code = 1
     try:
+        summary["phase"]="tool_versions"
+        versions=tool_versions(python,redis,args.prepare_only)
+        summary["toolVersions"]=versions
         old, new = private/"old", private/"new"
         summary["phase"] = "archive"
         archive_tree(source, BASELINE, old, private/"old.tar")
@@ -384,6 +506,9 @@ def run(args):
                                       "mix":"comments:feed:image:like=1:1:1:1","clockMaximumDriftNS":MAX_DRIFT_NS},
                     "oldTreeLabel":"fixed product plus observation/harness whitelist; not an unmodified baseline commit"}
         manifest["comparisonRunnerSHA256"] = digest(Path(__file__))
+        manifest["toolVersions"]=versions
+        manifest["approvedInstrumentationCommit"]=INSTRUMENTATION_COMMIT
+        manifest["approvedInstrumentationSHA256"]=INSTRUMENTATION_SHA256
         write_json(public/"manifest.json", manifest)
         summary["phase"] = "compile_both_trees"
         compile_trees(old,new,private)
@@ -404,6 +529,7 @@ def run(args):
             print(spec["label"] + " " + report["result"], flush=True)
             if report["result"] != "PASS":
                 summary.update(result="FAIL", reason="cohort_failed_no_retry")
+                if report.get("termination")=="interrupted":summary["interruptedExitCode"]=report["processExitCode"]
                 break
         for pair in dict.fromkeys(spec["pair"] for spec in profiles()):
             matched = [report for report in reports if report["spec"]["pair"] == pair]
@@ -414,7 +540,7 @@ def run(args):
         summary["performanceResult"] = summary["result"]
         summary["phase"] = "complete" if len(reports)==len(profiles()) else "cohort_failed"
         summary["notRun"] = [spec["label"] for spec in profiles() if spec["label"] not in {report["label"] for report in reports}]
-        exit_code = 0 if summary["result"] == "PASS" else 1
+        exit_code = 0 if summary["result"] == "PASS" else summary.get("interruptedExitCode",1)
     except InterruptedComparison as error:
         summary.update(result="FAIL", reason="interrupted_no_retry")
         exit_code = 128 + error.signum

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -28,10 +29,13 @@ def good_data(spec):
                                 observation=dict(clockValid=True,truncated=False,stages={
                                     "comments.gate_hold":dict(nanoseconds=80,calls=2),"comments.anchor_write":dict(nanoseconds=10,calls=1),
                                     "comments.prepare_read":dict(nanoseconds=20,calls=1)})))
-    return dict(result="PASS",failures=0,environmentValid=True,environmentResult="PASS",preparedReads=spec["prepared"],
+    value=dict(result="PASS",failures=0,environmentValid=True,environmentResult="PASS",preparedReads=spec["prepared"],
                 comments=spec["comments"],sampleWaves=spec["samples"],warmupWaves=spec["warmup"],poolMaxConns=12,concurrency=4,
                 freshNonce=spec["fresh"],commentSort=spec["sort"],warmupFailures=[],samples=samples,sourceCommit=comparison.BASELINE,
                 cohortClock=dict(wallElapsedNS=1000,goElapsedNS=1000,rawElapsedNS=1000))
+    value.update(comparison.frozen_configuration(spec))
+    value["transactionSettings"]=comparison.TRANSACTION_SETTINGS.copy()
+    return value
 
 
 class ComparisonTests(unittest.TestCase):
@@ -56,12 +60,15 @@ class ComparisonTests(unittest.TestCase):
         for name in comparison.OVERLAY:
             path=new/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text("observation")
         product=new/"services/api/internal/authprivacy/community_comments_prepared.go";product.write_text("new product")
-        records=comparison.overlay_observation(old,new)
+        approved={path:comparison.digest(new/path) for path in comparison.INSTRUMENTATION_SHA256}
+        with mock.patch.dict(comparison.INSTRUMENTATION_SHA256,approved,clear=True):
+            records=comparison.overlay_observation(old,new)
         self.assertEqual(len(comparison.OVERLAY),len(records))
         self.assertFalse((old/product.relative_to(new)).exists())
         self.assertTrue(all(row["headSHA256"]==row["appliedSHA256"] for row in records))
         for paths in (("services/api/internal/authprivacy/community_comments_prepared.go",),(comparison.OVERLAY[0],)*2):
             with self.assertRaises(comparison.ComparisonError):comparison.overlay_observation(old,new,paths)
+        with self.assertRaises(comparison.ComparisonError):comparison.overlay_observation(old,new)
 
     def test_archive_rejects_parent_absolute_symlink_and_special_entries(self):
         for name,kind,link in (("../outside",tarfile.REGTYPE,""),("/outside",tarfile.REGTYPE,""),
@@ -72,6 +79,17 @@ class ComparisonTests(unittest.TestCase):
                 entry=tarfile.TarInfo(name);entry.type=kind;entry.linkname=link;stream.addfile(entry)
             destination=self.root/"extract";destination.mkdir(exist_ok=True)
             with self.subTest(name=name),self.assertRaises(comparison.ComparisonError):comparison.extract_archive(archive,destination)
+
+    @unittest.skipUnless(os.name=="posix","POSIX archive symlinks")
+    def test_archive_resolves_complete_link_graph_and_cycles(self):
+        for links in ((('a','.'),('b','a/../outside')),(('a','b'),('b','a'))):
+            with tempfile.TemporaryDirectory(dir=self.root) as temporary:
+                root=Path(temporary);archive=root/"links.tar";destination=root/"tree";destination.mkdir()
+                with tarfile.open(archive,"w") as stream:
+                    for name,target in links:
+                        entry=tarfile.TarInfo(name);entry.type=tarfile.SYMTYPE;entry.linkname=target;stream.addfile(entry)
+                with self.assertRaises(comparison.ComparisonError):comparison.extract_archive(archive,destination)
+                self.assertFalse((root/"outside").exists())
 
     def test_clock_errors_missing_samples_and_wrong_commit_cannot_pass(self):
         spec=dict(comparison.profiles()[0],samples=2)
@@ -89,6 +107,30 @@ class ComparisonTests(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertEqual("FAIL",comparison.evaluate_cohort(value,spec,0,comparison.BASELINE)["result"])
         self.assertEqual("FAIL",comparison.evaluate_cohort(data,spec,1)["result"])
+
+    def test_unknown_kind_is_judged_before_grouping_and_cannot_hide_error(self):
+        spec=dict(comparison.profiles()[0],samples=2);data=good_data(spec)
+        extra=copy.deepcopy(data["samples"][0]);extra.update(kind="unknown",error="private failure",clockStable=False)
+        data["samples"].append(extra)
+        report=comparison.evaluate_cohort(data,spec,0)
+        self.assertEqual("FAIL",report["result"])
+        self.assertIn("unknown_sample_kind",report["reasons"])
+        self.assertIn("request_failed",report["reasons"])
+        self.assertIn("invalid_sample_clock_or_trace",report["reasons"])
+        self.assertEqual(9,len(report["samples"]))
+
+    def test_complete_configuration_and_timeouts_are_frozen_and_public(self):
+        spec=dict(comparison.profiles()[0],samples=2);data=good_data(spec)
+        for field,value in dict(goMaxProcs=8,posts=21,pageSize=20,feedPageSize=50,commentLikeRows=0,mix="other",snapshotBackend="postgres",likeTarget="comment-like-same-post",goVersion="go1.23.0").items():
+            changed=copy.deepcopy(data);changed[field]=value
+            with self.subTest(field=field):
+                report=comparison.evaluate_cohort(changed,spec,0)
+                self.assertEqual("FAIL",report["result"])
+                self.assertIn(field,report["actualConfiguration"])
+        changed=copy.deepcopy(data);changed["transactionSettings"]["statement_timeout"]="20s"
+        report=comparison.evaluate_cohort(changed,spec,0)
+        self.assertIn("wrong_transaction_settings",report["reasons"])
+        self.assertEqual("20s",report["actualConfiguration"]["transactionSettings"]["statement_timeout"])
 
     def test_exact_thresholds_and_non_main_reporting(self):
         spec=dict(comparison.profiles()[0],samples=2)
@@ -129,7 +171,36 @@ class ComparisonTests(unittest.TestCase):
         child.wait.side_effect=[subprocess.TimeoutExpired("owned",30),0]
         with mock.patch.object(comparison.os,"killpg") as kill:
             comparison.stop_child(child)
-        self.assertEqual([mock.call(12345,signal.SIGTERM),mock.call(12345,signal.SIGKILL)],kill.call_args_list)
+        self.assertEqual([mock.call(12345,signal.SIGTERM),mock.call(12345,signal.SIGKILL)],[call for call in kill.call_args_list if call.args[1]!=0])
+
+    def test_timeout_and_interrupt_preserve_existing_raw_samples(self):
+        spec=dict(comparison.profiles()[0],samples=2)
+        for problem,termination in ((subprocess.TimeoutExpired("owned",720),"timeout"),(comparison.InterruptedComparison(signal.SIGTERM),"interrupted")):
+            with tempfile.TemporaryDirectory(dir=self.root) as temporary:
+                private=Path(temporary);(private/(spec["label"]+".json")).write_text(json.dumps(good_data(spec)))
+                child=mock.Mock();child.wait.side_effect=problem
+                with mock.patch.object(comparison.subprocess,"Popen",return_value=child),mock.patch.object(comparison,"stop_child") as stop:
+                    report=comparison.run_cohort(self.root,spec,comparison.BASELINE,private,self.root,Path(sys.executable),Path(sys.executable))
+                self.assertEqual("FAIL",report["result"]);self.assertEqual(termination,report["termination"])
+                self.assertEqual(8,len(report["samples"]));self.assertEqual(spec["label"],report["label"]);stop.assert_called_once_with(child)
+
+    @unittest.skipUnless(hasattr(os,"killpg"),"POSIX process groups")
+    def test_cleanup_stops_descendant_after_shell_leader_already_exited(self):
+        ready,stopped=self.root/"ready",self.root/"stopped"
+        child_code="import signal,sys,time;from pathlib import Path;signal.signal(signal.SIGTERM,lambda *_:(Path(sys.argv[2]).write_text('stopped'),sys.exit(0)));Path(sys.argv[1]).write_text('ready');time.sleep(120)"
+        leader_code="import subprocess,sys;p=subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2],sys.argv[3]],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);print(p.pid,flush=True)"
+        leader=subprocess.Popen([sys.executable,"-c",leader_code,child_code,str(ready),str(stopped)],stdout=subprocess.PIPE,text=True,start_new_session=True)
+        try:
+            leader.stdout.readline();leader.wait(timeout=5)
+            deadline=time.monotonic()+5
+            while not ready.exists() and time.monotonic()<deadline:time.sleep(.01)
+            self.assertTrue(ready.exists());self.assertIsNotNone(leader.poll())
+            comparison.stop_child(leader)
+            self.assertTrue(stopped.exists())
+        finally:
+            try:os.killpg(leader.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+            leader.stdout.close()
 
 
 if __name__ == "__main__":unittest.main()
