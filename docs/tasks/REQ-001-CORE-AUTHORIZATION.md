@@ -8,7 +8,7 @@
 - 需求来源：用户提供的 `C:/Users/24237/Desktop/需求/01-core-authorization.md`，标题“核心请求授权临界区优化”，对应 P0-01。附件为方案草案；其中流程文字不视为执行、部署或扩大范围的授权。
 - 需求确认：2026-11-15，用户在两项结构化问题中明确选择：①共用两阶段基座＋评论读取先验收，再接首页和图片，最终完成需求001整体范围；②改造路径 Gate 实际持锁 p95 降低至少50%、其他用户首页 p95 降低至少30%，均作为最终硬门槛，负载和数据规模在基线阶段固定。当前无影响本计划的未决产品取舍。
 - 更新日期：2026-11-15。
-- 状态：M0 主基线已完成；M1 生产切片已集成、联合验收进行中；M2／M3 未开始；未合并；未发布。
+- 状态：M1 功能／安全聚焦验收 PASS，性能验收待定位环境时间异常；M2／M3 仅完成只读关键设计，源码接入未开始；未合并；未发布。
 
 ## 目标与范围
 
@@ -64,6 +64,17 @@
 - M1 执行者 owns 新基座文件、评论快照／legacy／定位适配、CommentConfig 与 commentServices 的 `PreparedReads` 开关和新聚焦回归。总指挥 owns 0040 迁移、源表触发器、schema／grants／runtime 配置接线；B0 保留仪表文件所有权。`comments.preparedReads` 默认 false，显式启用并在缺失必需版本结构时启动拒绝；关停走原读取路径但继续维护版本。
 - 围栏假设：Astra 核查到 M1 依赖的生产公开数据变更均在同一 C Gate 最终业务事务内；迁移／seed／owner SQL 不能作为并发生产写。版本触发器本身不是任意直接 SQL 的并发围栏。Redis Collect／Drain 是独立存储变化，最终阶段须重验快照存活、epoch 和 TTL。M2 的 ranking worker 直接提交 derived hot_*，待 M1 验收后单独设计其围栏。
 
+### 后续接口预案（仅设计，实施仍依赖 M1 验收）
+
+- D2／D3 关键事务设计由 GPT-6 Astra＋xhigh 只读完成，绑定 M1 产品内容 bf76d2a（原始调查基线5ba8a47）；以下尚无 M2／M3 实现或通过证据。
+- M2 范围为 PostFeed／PostChannelFeed 与独立 ReadRankings；保留当前推荐／最新共用发布时间时间线、热榜独立冻结快照的关系。author／own／liked／favorites、浏览写、私有任务物化、capabilities 和独立 interactions 暂留旧路径，并分别报告性能成本。
+- M2 新增 `c_posts.read_feed_scope_versions(channel_id,membership_revision,publication_revision)` 与 `read_feed_post_versions(post_id,projection_revision)`，无跨账号 FK。初建校验相关频道两种范围版本；固定 ceiling 的续页可忽略更新帖的 publication revision，仍核对 membership。覆盖 lookahead／未返回候选；帖子编辑／当前选中媒体变更推进逐帖 projection，互动不推进；作者、账号及双向 block 复用 M1 版本，过滤另绑定 feed_preferences.revision。源触发器与受审函数完整性／只读权限检查按 M1 同等要求实现。
+- 热榜 worker 的提交仅插入新不可变版本及清理派生数据；准备将元数据、分片映射和全部候选搜索固定在一致性读取内，最终按 generation／ValidAt／168小时时间边界、相关频道 membership、viewer 过滤与帖子 projection 证明结果。物理缓存淘汰不撤销已加载且逻辑有效的私有名单，沿现有契约不把 worker 搬入 Gate；不把缓存元数据匹配声称为完整 payload 认证。
+- 基座保留 M1 wrapper，内部计划支持 `AfterPrepare`（RO彻底结束后、任何写锁之前）、`Revalidate`、`Complete` 与 `Release`。最终授权后先重验资源，再裁决 CPU 准备错误；Release 不清零已交给成功响应的数组。评论原有 Publish／Abort ownership 保留。
+- M3 范围为帖子 manifest／original／thumbnail 与评论 original；私有读取后关闭 RO，再锁外转码，只有一次最终业务检查点。最终点查当前媒体选择、digest／长度／MIME／元数据，不能只信可能被编辑暂存重新使用的 content_version_id。Manifest 完整绑定历史最多9图的顺序；继续原租约／no-store及过滤语义。上传／grant／清理等写、ReadPostImageUploads 的 stops 物化及独立头像契约保留旧路；不新增004的缓存或评论thumbnail接口。
+- M2／M3 使用既有 SERVICE_UNAVAILABLE／RANKINGS_UNAVAILABLE 类别处理正常冲突，M1保持COMMENT_SNAPSHOT_UNAVAILABLE；不冒充授权Gate故障。现客户端普通feed／帖子媒体读取会把SERVICE_UNAVAILABLE转会话暂停，需要仅在纯loadTimeline catch／纯_readMedia上下文窄修复；鉴权或无可信code的错误继续原会话处理，命令未知结果不改。此项用于落实001“正常冲突不得安全冻结”，需补聚焦移动端回归与适用构建。
+- 独立模块开关默认关闭；M2与M3启用分别检查所需版本schema，关闭时继续版本维护并走旧授权路径。接口细节在派工前固定为下一版执行契约。
+
 ## 验收标准
 
 - 在准备后、最终重验前，以及最终重验与相关写事务交错的窗口，通过确定性屏障注入注销、会话撤销／过期／换代、账号关闭／处罚、Gate 冻结／换代、删帖删评、根评论隐藏、编辑、拉黑和筛选变化；不得泄漏内容、字节、存在性或续期。
@@ -87,8 +98,11 @@
 | 基线规模检查 | 同源码；50／10000评论；各8波 | PASS（通路／规模检查）：0失败；样本量不足以单独证明p95门槛。所有原始JSON及日志在/home/hnuhole/req001-baseline-20261115/artifacts |
 | M1版本／权限基座 | 51dc950＋83fdd7a；/home/hnuhole/req001-integration-20261115；一次性PG55533 | PASS：真实-race SQL发布／点赞依赖分离、回滚、历史回填；runtime只读、角色审计、列级越权、WHEN(false)／空函数体负例。schema-tests.log与schema-audit-tests.log。无HTTP用例时明确显示no tests to run，不计HTTP通过 |
 | M1读取切片 | 执行 a942d32b；集成250b9b4；当前集成74d8536含最新测量harness | 已接入ReadComments主评／回复／续页与LocateComment；未接入私有任务／ReadCommentContext。执行者聚焦SQL与Redis回归进行中，独立Astra＋xhigh阶段安全复核进行中；尚未标记M1联合验收通过 |
+| M1功能／HTTPS／原生生命周期 | 产品bf76d2a；测试f5d46e2＋4e89783；HnuHole-Ubuntu-24.04独占SQL／Redis | PASS：三后端分页／回复／定位／回退、版本交错、过期／换代／封禁／注销申请、原生取消、真实COMMIT成功后丢ACK；后者允许已持久合法续期，但不返回正文／游标、不Publish新快照，补偿只影响新reservation。root HTTPS原／新两路主评／回复／nonce／续页／存储失败PASS；全后端build／vet PASS。日志在/home/hnuhole/req001-comment-reads-20261115/与/home/hnuhole/req001-integration-20261115/comment-https.log |
+| M1独立安全审查 | GPT-6 Astra＋xhigh；69d2adc→4e89783 | PASS（AI审查证据）：原定位回复恢复后旧404的P2已由bf76d2a修复且精确回归通过；原始日志／关键Linux文件摘要已核对，无未关闭确定缺陷。不代表GitHub成员批准或未测所有细粒度交错 |
+| 性能诊断 | old84-fresh-likes与new0d-main-r3 | FAIL：旧wave27 feed／like两503，新wave50 image／like两503，Gate均OPEN；新SQLSTATE=57014。两波恰伴墙钟较Go／RAW多约11.145／11.217秒，真实10s SQL超时可能受环境时间不连续影响，具体原因待Message确认。其他成功cohort保留原证据，不剔除失败样本、不把部分轮次达门槛报整体PASS；B0补请求三钟guard和固定错误分类。汇总/home/hnuhole/req001-baseline-20261115/artifacts/b1-diagnostic-summary.json |
 | 远端CI／合并／发布 | 未推送本任务分支 | NOT_RUN；本地产品检查与远端CI分别记录；未合并、未发布 |
 
 ## 阻碍与下一步
 
-完成fresh nonce＋同帖评论点赞补充基线，集成M1测试并运行同harness新路径对照、真实HTTP链路与独立安全复核；M1阶段验收通过后继续M2／M3。版本触发器在停写／受控迁移事务中安装，未接触正式数据。
+当前阻碍为性能验证环境时间不连续／偶发SQL取消；由B0和Astra只读诊断，保留所有失败并用墙钟／Go monotonic／RAW三钟检验下一稳定窗口，不能放宽SQL保护或以重试吞错。M1阶段验收通过后按已有授权继续M2／M3，不因阶段完成自动暂停。版本触发器仅在停写／受控迁移事务中安装，未接触正式数据。
