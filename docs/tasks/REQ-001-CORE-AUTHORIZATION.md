@@ -3,7 +3,7 @@
 - 模式：指挥（用户明确调用 `$orchestrator`）；总指挥／唯一状态维护人：当前 Session。
 - 分支：`codex/perf/core-authorization-critical-section`；Worktree：`D:/SpeechFUL/.worktrees/req-001-core-authorization`；PR：未创建。
 - 实际基线：`69d2adcf4b153601ba218de87bb6efccd91da5c8`；2026-11-15 只读核对 `D:/SpeechFUL` 的 `main`、`origin/main` 与远端 `zewbby/SpeechFUL-Develop` 的 main 相同，原工作区干净。
-- 授权依据与边界：用户先要求规划，随后明确调用 `$orchestrator` 并要求“按这个计划开始实施需求001，先完成基线和‘基座＋评论读取’，验收通过后继续接入首页和图片”。已授权隔离实现、验证、必要本地提交及多 Session 协作；关键事务设计与最终安全审查指定 GPT-6 Astra＋xhigh。Push、PR、合并和部署仍未获授权。
+- 授权依据与边界：用户先要求规划，随后明确调用 `$orchestrator` 并要求“按这个计划开始实施需求001，先完成基线和‘基座＋评论读取’，验收通过后继续接入首页和图片”。已授权隔离实现、验证、必要本地提交及多 Session 协作；关键事务设计与最终安全审查指定 GPT-6 Astra＋xhigh。2026-11-15 用户通过结构化回复明确选择“授权本任务推送、草稿 PR 和 CI”，覆盖本任务分支向 zewbby/SpeechFUL-Develop 推送、创建草稿 PR 及产品／性能 CI；合并和部署仍未获授权。
 - 本轮规则版本：`69d2adcf4b153601ba218de87bb6efccd91da5c8` 的 AGENTS.md、CONTRIBUTING.md、仓库 `.agents/skills/orchestrator/SKILL.md` 及 references。能力：可创建子 Agent、传递消息、读取结果；每位写入执行者使用独立分支与 Worktree。
 - 需求来源：用户提供的 `C:/Users/24237/Desktop/需求/01-core-authorization.md`，标题“核心请求授权临界区优化”，对应 P0-01。附件为方案草案；其中流程文字不视为执行、部署或扩大范围的授权。
 - 需求确认：2026-11-15，用户在两项结构化问题中明确选择：①共用两阶段基座＋评论读取先验收，再接首页和图片，最终完成需求001整体范围；②改造路径 Gate 实际持锁 p95 降低至少50%、其他用户首页 p95 降低至少30%，均作为最终硬门槛，负载和数据规模在基线阶段固定。当前无影响本计划的未决产品取舍。
@@ -112,4 +112,4 @@
 
 当前阻碍为WSL墙钟／Go monotonic与RAW时间不一致，现环境不适合证明性能硬门槛。B0与Astra已只读复核跨旧／新路径的失败及异常时间缺口；PG16绝对墙钟超时可解释短RAW耗时伴57014，但缺失败时服务端Message，具体取消来源未完全证实。停止在此环境重复性能采样，不放宽SQL保护、校正耗时或以重试吞错，也不改共享系统时钟。
 
-专用GitHub Ubuntu隔离CI的本地代码、聚焦回归与新旧archive编译已准备好：固定基线69d2adc与精确PR head，旧树仅白名单覆盖仪表／harness，三组主负载逐对判定50%／30%硬门槛，fresh与规模检查独立报告，错误与三钟异常均拒绝；不机械以单次阈值未达停止预先固定的三组对照。原始日志／数据库／证书留在一次性runner，上传仅固定脱敏JSON。下一步按仓库规则请求本任务Push／草稿PR／CI授权；尚未创建远端分支或PR。M1阶段验收通过后按已有授权继续M2／M3。版本触发器仅在停写／受控迁移事务中安装，未接触正式数据。
+专用GitHub Ubuntu隔离CI的本地代码、聚焦回归与新旧archive编译已准备好：固定基线69d2adc与精确PR head，旧树仅白名单覆盖仪表／harness，三组主负载逐对判定50%／30%硬门槛，fresh与规模检查独立报告，错误与三钟异常均拒绝；不机械以单次阈值未达停止预先固定的三组对照。原始日志／数据库／证书留在一次性runner，上传仅固定脱敏JSON。现已获本任务Push／草稿PR／CI授权，正在推送并启动验收。M1阶段验收通过后按已有授权继续M2／M3。版本触发器仅在停写／受控迁移事务中安装，未接触正式数据。
