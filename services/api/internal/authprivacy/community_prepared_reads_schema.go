@@ -2,6 +2,10 @@ package authprivacy
 
 import "context"
 
+// SHA-256 of the LF-normalized prosrc installed by 0040. A same-signature
+// no-op trigger must not pass startup after an incomplete schema restore.
+const preparedCommentReadVersionFunctionDigest = "11e5f1796150f174063e5118aa78e610bffee6314968fb087f0fb61079f24f58"
+
 // Only explicitly enabled prepared reads require 0040. The original path can
 // still run while an operator rolls the optional read optimization back.
 func (c *Community) checkPreparedCommentReadSchema(ctx context.Context) error {
@@ -46,7 +50,8 @@ func (c *Community) checkPreparedCommentReadSchema(ctx context.Context) error {
   to_regclass('c_posts.read_account_versions')))
  AND EXISTS (SELECT 1 FROM pg_proc p WHERE p.oid=to_regprocedure('c_comments.advance_read_versions()')
   AND p.prorettype='trigger'::regtype AND p.prosecdef
-  AND p.proconfig=ARRAY['search_path=pg_catalog'])
+  AND p.proconfig=ARRAY['search_path=pg_catalog']
+  AND encode(sha256(convert_to(replace(p.prosrc,chr(13),''),'UTF8')),'hex')=$1)
  AND EXISTS (SELECT 1 FROM pg_index i WHERE i.indexrelid=to_regclass('c_comments.comment_snapshot_owner_expiry_idx')
   AND i.indrelid=to_regclass('c_comments.snapshots') AND i.indisvalid AND i.indisready
   AND i.indpred IS NULL AND i.indexprs IS NULL
@@ -66,9 +71,10 @@ func (c *Community) checkPreparedCommentReadSchema(ctx context.Context) error {
   WHERE t.tgrelid=to_regclass(required.rel) AND t.tgname=required.name AND t.tgenabled='O'
     AND NOT t.tgisinternal AND t.tgfoid=to_regprocedure('c_comments.advance_read_versions()')
     AND t.tgtype=required.mask AND t.tgnargs=0
+    AND t.tgqual IS NULL AND t.tgconstraint=0 AND NOT t.tgdeferrable AND NOT t.tginitdeferred
     AND t.tgattr::text=(SELECT COALESCE(string_agg(a.attnum::text,' ' ORDER BY col.pos),'')
      FROM unnest(required.cols) WITH ORDINALITY col(name,pos)
-     JOIN pg_attribute a ON a.attrelid=t.tgrelid AND a.attname=col.name AND NOT a.attisdropped)))`).Scan(&ok); err != nil || !ok {
+     JOIN pg_attribute a ON a.attrelid=t.tgrelid AND a.attname=col.name AND NOT a.attisdropped)))`, preparedCommentReadVersionFunctionDigest).Scan(&ok); err != nil || !ok {
 		return errCommentSchema
 	}
 	if err := c.pool.QueryRow(ctx, `SELECT current_user<>'hnuhole_c_runtime' OR (

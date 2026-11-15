@@ -71,10 +71,13 @@ BEGIN
             IF NOT FOUND THEN RAISE EXCEPTION 'missing prepared post version' USING ERRCODE = '23514'; END IF;
         END IF;
     ELSIF source = 'public.community_identities' THEN
-        IF TG_OP = 'INSERT' OR (NEW.nickname, NEW.avatar, NEW.deleted_at, NEW.account_id)
+        IF TG_OP = 'INSERT' THEN
+            INSERT INTO c_posts.read_identity_versions VALUES (NEW.identity_id, 1);
+        ELSIF (NEW.nickname, NEW.avatar, NEW.deleted_at, NEW.account_id)
             IS DISTINCT FROM (OLD.nickname, OLD.avatar, OLD.deleted_at, OLD.account_id) THEN
-            INSERT INTO c_posts.read_identity_versions VALUES (NEW.identity_id, 1)
-            ON CONFLICT (identity_id) DO UPDATE SET projection_revision = c_posts.read_identity_versions.projection_revision + 1;
+            UPDATE c_posts.read_identity_versions SET projection_revision = projection_revision + 1
+                WHERE identity_id = NEW.identity_id;
+            IF NOT FOUND THEN RAISE EXCEPTION 'missing prepared identity version' USING ERRCODE = '23514'; END IF;
         END IF;
     ELSIF source = 'c_auth.accounts' THEN
         IF TG_OP = 'INSERT' THEN
@@ -90,8 +93,9 @@ BEGIN
             CASE WHEN TG_OP = 'DELETE' THEN OLD.account_id ELSE NEW.account_id END,
             CASE WHEN TG_OP = 'DELETE' THEN OLD.author_account_id ELSE NEW.author_account_id END
         ]) x ORDER BY x LOOP
-            INSERT INTO c_posts.read_account_versions VALUES (endpoint, 0, 1)
-            ON CONFLICT (account_id) DO UPDATE SET visibility_revision = c_posts.read_account_versions.visibility_revision + 1;
+            UPDATE c_posts.read_account_versions SET visibility_revision = visibility_revision + 1
+                WHERE account_id = endpoint;
+            IF NOT FOUND THEN RAISE EXCEPTION 'missing prepared account visibility version' USING ERRCODE = '23514'; END IF;
         END LOOP;
     ELSIF source = 'c_comments.likes' THEN
         IF TG_OP = 'DELETE' THEN
