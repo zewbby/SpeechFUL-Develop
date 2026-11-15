@@ -41,6 +41,8 @@ func (tracer baselinePoolTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn,
 	var serverError interface{ SQLState() string }
 	if errors.As(data.Err, &serverError) {
 		code = serverError.SQLState()
+	} else {
+		code = "client:" + fmt.Sprintf("%T", data.Err)
 	}
 	switch code {
 	case "40P01":
@@ -200,6 +202,18 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 	clone.pool = pool
 	l.c = &clone
 	l.gate.pool = pool
+	settingsTx, err := begin(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var deadlockTimeout, lockTimeout, statementTimeout string
+	err = settingsTx.QueryRow(ctx, `SELECT current_setting('deadlock_timeout'),current_setting('lock_timeout'),current_setting('statement_timeout')`).Scan(&deadlockTimeout, &lockTimeout, &statementTimeout)
+	rollbackErr := settingsTx.Rollback(ctx)
+	if err != nil || rollbackErr != nil {
+		t.Fatal("cannot inspect fixture transaction timeouts", err, rollbackErr)
+	}
+	transactionSettings := map[string]string{"deadlock_timeout": deadlockTimeout, "lock_timeout": lockTimeout, "statement_timeout": statementTimeout}
+	t.Logf("baseline transaction settings=%s", mustBaselineJSON(transactionSettings))
 	operations := []struct {
 		kind string
 		run  func(context.Context, int) error
@@ -306,7 +320,8 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 		"preparedReads": preparedReads,
 		"clock":         "CLOCK_MONOTONIC_RAW stages; Go monotonic client elapsed", "samples": measurements,
 		"goVersion": runtime.Version(), "goMaxProcs": runtime.GOMAXPROCS(0),
-		"holdBoundary": "successful locking SELECT response to transaction completion response; failure boundary separately flagged; sums include traced precheck/final transactions; independent Abort freeze persistence is covered by gate_abort, not original gate_hold",
+		"transactionSettings": transactionSettings,
+		"holdBoundary":        "successful locking SELECT response to transaction completion response; failure boundary separately flagged; sums include traced precheck/final transactions; independent Abort freeze persistence is covered by gate_abort, not original gate_hold",
 	}
 	if fresh {
 		result["nonce"] = "distinct initial snapshot nonce per wave; bounded within existing account quota"
