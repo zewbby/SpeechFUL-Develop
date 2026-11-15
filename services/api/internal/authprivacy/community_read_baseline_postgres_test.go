@@ -1,0 +1,318 @@
+package authprivacy
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/postmedia"
+	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/posts"
+	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/readtiming"
+)
+
+type baselineAcquireKey struct{}
+type baselinePoolTracer struct{}
+
+func (baselinePoolTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryStartData) context.Context {
+	return ctx
+}
+func (baselinePoolTracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+func (baselinePoolTracer) TraceAcquireStart(ctx context.Context, _ *pgxpool.Pool, _ pgxpool.TraceAcquireStartData) context.Context {
+	return context.WithValue(ctx, baselineAcquireKey{}, readtiming.Span(ctx, "pool_wait"))
+}
+func (baselinePoolTracer) TraceAcquireEnd(ctx context.Context, _ *pgxpool.Pool, _ pgxpool.TraceAcquireEndData) {
+	if finish, ok := ctx.Value(baselineAcquireKey{}).(func()); ok {
+		finish()
+	}
+}
+
+type readBaselineSample struct {
+	Kind        string                 `json:"kind"`
+	Index       int                    `json:"index"`
+	ElapsedNS   int64                  `json:"elapsedNS"`
+	Error       string                 `json:"error,omitempty"`
+	Observation readtiming.Observation `json:"observation"`
+}
+
+func baselineInt(t *testing.T, key string, fallback, lower, upper int) int {
+	t.Helper()
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < lower || n > upper {
+		t.Fatalf("%s must be between %d and %d", key, lower, upper)
+	}
+	return n
+}
+
+// Synthetic rows only prepare the owned fixture. All measured operations call
+// production Community methods, Gate checks, PostgreSQL and durable commits.
+// This is a service-method benchmark, not HTTP/device/production acceptance.
+func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
+	if os.Getenv("REQ001_BASELINE") != "1" {
+		t.Skip("opt-in mixed-load measurement")
+	}
+	if os.Getenv("AUTHLAB_C_DSN") == "" || os.Getenv("AUTHLAB_V_DSN") == "" || os.Getenv("POST_MEDIA_PYTHON") == "" || os.Getenv("POST_MEDIA_FIXTURES") == "" {
+		t.Fatal("owned C/V SQL and real image validator fixtures are required")
+	}
+	output := os.Getenv("REQ001_BASELINE_OUTPUT")
+	if !filepath.IsAbs(output) || !strings.HasSuffix(output, ".json") {
+		t.Fatal("REQ001_BASELINE_OUTPUT must be an absolute JSON artifact path outside source")
+	}
+	root, err := filepath.Abs("../../../..")
+	if err != nil || output == root || strings.HasPrefix(output, root+string(os.PathSeparator)) {
+		t.Fatal("baseline artifacts must stay outside source")
+	}
+	comments := baselineInt(t, "REQ001_BASELINE_COMMENTS", 1000, 50, 10000)
+	likes := baselineInt(t, "REQ001_BASELINE_LIKES", min(comments, 1000), 0, comments)
+	samples := baselineInt(t, "REQ001_BASELINE_SAMPLES", 80, 8, 1000)
+	warmup := baselineInt(t, "REQ001_BASELINE_WARMUP", 10, 1, 100)
+	l := commentTextLab(t)
+	enableImageLab(t, l)
+	ctx := context.Background()
+	owner := sessionTestAccount(t, l, "baseline_owner")
+	identity := identityChange(t, l.c, owner.SessionToken, "CREATE", uuid.Nil, "基线作者").IdentityID
+	selection, image := imageFixture(t, "png")
+	intent := postTestIntent(t, l, identity)
+	intent.Images = []postmedia.Selection{selection}
+	accepted := postTestCommand(t, l, owner.SessionToken, postTestKey(t), intent)
+	grant := imageGrant(t, l, owner.SessionToken, accepted, selection.MediaID)
+	imageUpload(t, l, accepted, selection, grant, image)
+	postTestPublish(t, l)
+	for n := 1; n < 20; n++ {
+		postTestCommand(t, l, owner.SessionToken, postTestKey(t), postTestIntent(t, l, identity))
+	}
+	postTestPublish(t, l)
+	readers := [4][32]byte{}
+	for n := range readers {
+		readers[n] = sessionTestAccount(t, l, fmt.Sprintf("baseline_reader_%d", n)).SessionToken
+	}
+	// Establish the comment protocol key commitment through an authorized empty
+	// read before inserting synthetic historical receipts into the owned fixture.
+	if _, err = l.c.ReadComments(ctx, owner.SessionToken, CommentQuery{ID: accepted.PostID}); err != nil {
+		t.Fatal(err)
+	}
+	seedReadBaselineComments(t, l, owner.AccountID, identity, accepted.PostID, comments, likes)
+	_, snapshotConfig := snapshotSQLStore(t, l)
+	if os.Getenv("REQ001_BASELINE_BACKEND") == "postgres" {
+		snapshotConfig.CreateBackend = "postgres"
+		l.c.comments.snapshotConfig = &snapshotConfig
+	}
+	manifest, err := l.c.ReadPostImages(ctx, readers[2], accepted.PostID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := manifest.Value.(postmedia.Group).Images[0].ContentVersionID
+	poolConfig := l.cp.Config()
+	poolConfig.MaxConns, poolConfig.MinConns = 12, 0
+	poolConfig.ConnConfig.Tracer = baselinePoolTracer{}
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	clone := *l.c
+	clone.pool = pool
+	l.c = &clone
+	l.gate.pool = pool
+	operations := []struct {
+		kind string
+		run  func(context.Context, int) error
+	}{
+		{"comments", func(ctx context.Context, _ int) error {
+			_, err := l.c.ReadComments(ctx, readers[0], CommentQuery{ID: accepted.PostID, Limit: 50})
+			return err
+		}},
+		{"feed", func(ctx context.Context, _ int) error {
+			_, err := l.c.ReadPosts(ctx, readers[1], PostQuery{Kind: PostFeed, Limit: 20})
+			return err
+		}},
+		{"image", func(ctx context.Context, _ int) error {
+			_, err := l.c.ReadPostImages(ctx, readers[2], accepted.PostID, content)
+			return err
+		}},
+		{"like", func(ctx context.Context, n int) error {
+			_, err := l.c.SetPostInteraction(ctx, readers[3], accepted.PostID, posts.PostLike, n%2 == 0)
+			return err
+		}},
+	}
+	// Reuse a committed nonce so this test measures reads rather than growing
+	// per-account live reservations into the quota ceiling during sampling.
+	nonce := postTestKey(t)
+	operations[0].run = func(ctx context.Context, _ int) error {
+		_, err := l.c.ReadComments(ctx, readers[0], CommentQuery{ID: accepted.PostID, Limit: 50, SnapshotRequest: nonce})
+		return err
+	}
+	var mu sync.Mutex
+	measurements := make([]readBaselineSample, 0, samples*len(operations))
+	for wave := -warmup; wave < samples; wave++ {
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		// Fixed rotating dispatch order prevents one path always being first.
+		for n := range operations {
+			operation := operations[(n+wave+warmup)%len(operations)]
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				requestCtx, trace := readtiming.Start(ctx)
+				started := time.Now()
+				err := operation.run(requestCtx, wave+warmup)
+				sample := readBaselineSample{Kind: operation.kind, Index: wave, ElapsedNS: time.Since(started).Nanoseconds(), Observation: trace.Snapshot()}
+				if err != nil {
+					sample.Error = err.Error()
+				}
+				if wave >= 0 {
+					mu.Lock()
+					measurements = append(measurements, sample)
+					mu.Unlock()
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+	}
+	sort.Slice(measurements, func(i, j int) bool {
+		if measurements[i].Index != measurements[j].Index {
+			return measurements[i].Index < measurements[j].Index
+		}
+		return measurements[i].Kind < measurements[j].Kind
+	})
+	result := map[string]any{
+		"specVersion": 1, "scope": "service-method-real-postgresql", "syntheticSeed": true, "productionDeployment": false,
+		"sourceCommit": os.Getenv("REQ001_BASELINE_SOURCE"), "label": os.Getenv("REQ001_BASELINE_LABEL"),
+		"comments": comments, "commentLikeRows": likes, "posts": 20, "pageSize": 50, "feedPageSize": 20, "poolMaxConns": 12,
+		"warmupWaves": warmup, "sampleWaves": samples, "concurrency": 4, "mix": "comments:feed:image:like=1:1:1:1",
+		"dispatch": "wave barrier; rotating launch order; next wave waits for all four completions",
+		"nonce":    "Redis fixed nonce reuses committed reservation; PostgreSQL initial reads remain within existing quota", "snapshotBackend": snapshotConfig.CreateBackend,
+		"clock": "CLOCK_MONOTONIC_RAW stages; Go monotonic client elapsed", "samples": measurements,
+		"holdBoundary": "successful locking SELECT response to transaction completion response; failure boundary separately flagged; sums include all Gate precheck/abort transactions",
+	}
+	stats := map[string]any{}
+	failures := 0
+	for _, operation := range operations {
+		var elapsed, hold, waits, anchor, acquire []int64
+		var holdCalls int64
+		for _, sample := range measurements {
+			if sample.Kind != operation.kind {
+				continue
+			}
+			if sample.Error != "" || !sample.Observation.ClockValid || sample.Observation.Truncated {
+				failures++
+			}
+			elapsed = append(elapsed, sample.ElapsedNS)
+			holdNS, waitNS, anchorNS, acquireNS := int64(0), int64(0), int64(0), int64(0)
+			requestHoldCalls, requestAnchorCalls := int64(0), int64(0)
+			for name, stage := range sample.Observation.Stages {
+				switch {
+				case strings.HasSuffix(name, "gate_hold"):
+					holdNS += stage.Nanoseconds
+					holdCalls += stage.Calls
+					requestHoldCalls += stage.Calls
+				case strings.HasSuffix(name, "gate_row_lock"):
+					waitNS += stage.Nanoseconds
+				case strings.HasSuffix(name, "anchor_write"):
+					anchorNS += stage.Nanoseconds
+					requestAnchorCalls += stage.Calls
+				case strings.HasSuffix(name, "pool_wait"):
+					acquireNS += stage.Nanoseconds
+				case strings.HasSuffix(name, "gate_hold_boundary_uncertain"):
+					failures++
+				}
+			}
+			if requestHoldCalls == 0 || requestAnchorCalls != 1 {
+				failures++
+			}
+			hold, waits, anchor, acquire = append(hold, holdNS), append(waits, waitNS), append(anchor, anchorNS), append(acquire, acquireNS)
+		}
+		stats[operation.kind] = map[string]any{"elapsed": baselineQuantiles(elapsed), "gateHoldPerRequest": baselineQuantiles(hold), "gateHoldCalls": holdCalls,
+			"gateLockQueryIncludingWait": baselineQuantiles(waits), "anchorWrite": baselineQuantiles(anchor), "poolAcquire": baselineQuantiles(acquire)}
+	}
+	result["stats"], result["failures"] = stats, failures
+	if failures != 0 {
+		var state, reason string
+		if err := l.cp.QueryRow(ctx, `SELECT gate_state,COALESCE(freeze_reason,'') FROM c_auth.authorization_gate WHERE singleton_id=1`).Scan(&state, &reason); err == nil {
+			t.Logf("failed measurement Gate state=%s reason=%s", state, reason)
+		}
+	}
+	result["result"] = "PASS"
+	if failures != 0 {
+		result["result"] = "FAIL"
+	}
+	encoded, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(output, append(encoded, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("REQ001 baseline comments=%d samples=%d failures=%d artifact=%s stats=%s", comments, samples, failures, output, mustBaselineJSON(stats))
+	if failures != 0 {
+		t.Fatal("mixed load contained failures or invalid measurements")
+	}
+}
+
+func seedReadBaselineComments(t *testing.T, l *lab, owner, identity uuid.UUID, post string, size, likes int) {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := l.cp.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	statements := []struct {
+		sql  string
+		args []any
+	}{
+		{`CREATE TEMP TABLE req001_comment_seed ON COMMIT DROP AS SELECT md5('req001-task-'||i)::uuid AS task,md5('req001-comment-'||i)::uuid AS comment,clock_timestamp()-interval '1 day'+i*interval '1 millisecond' AS at,i FROM generate_series(1,$1::int) i`, []any{size}},
+		{`CREATE INDEX req001_receipt_lookup ON c_comments.receipts(task_id,version)`, nil},
+		{`INSERT INTO c_comments.tasks(task_id,comment_id,owner_account_id,post_id,identity_id) SELECT task,comment,$1,$2,$3 FROM req001_comment_seed`, []any{owner, post, identity}},
+		{`INSERT INTO c_comments.attempts(task_id,version,state,accepted_at,accepted_stop_generation,body) SELECT task,1,'ACCEPTED',at,0,'合成评论 '||i||' '||repeat(md5(i::text),8) FROM req001_comment_seed`, nil},
+		{`INSERT INTO c_comments.receipts(key_digest,owner_account_id,intent_fingerprint,operation,outcome,task_id,version,committed_at) SELECT decode(md5(task::text)||md5(task::text),'hex'),$1,decode(repeat('00',32),'hex'),'CREATE','ACCEPTED',task,1,at FROM req001_comment_seed`, []any{owner}},
+		{`UPDATE c_comments.attempts a SET state='PUBLISHED',terminal_at=s.at FROM req001_comment_seed s WHERE a.task_id=s.task`, nil},
+		{`INSERT INTO c_comments.likes(account_id,comment_id) SELECT $1,comment FROM req001_comment_seed WHERE i<=$2`, []any{owner, likes}},
+		{`SET CONSTRAINTS ALL IMMEDIATE`, nil},
+		{`DROP INDEX c_comments.req001_receipt_lookup`, nil},
+	}
+	for n, statement := range statements {
+		if _, err = tx.Exec(ctx, statement.sql, statement.args...); err != nil {
+			t.Fatalf("synthetic baseline seed statement %d: %v", n, err)
+		}
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = l.cp.Exec(ctx, `ANALYZE c_comments.tasks; ANALYZE c_comments.attempts; ANALYZE c_comments.likes; ANALYZE c_posts.posts`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func baselineQuantiles(values []int64) map[string]int64 {
+	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+	result := map[string]int64{}
+	for name, percentile := range map[string]float64{"p50NS": .5, "p95NS": .95, "p99NS": .99} {
+		if len(values) != 0 {
+			result[name] = values[int(math.Ceil(percentile*float64(len(values))))-1]
+		}
+	}
+	return result
+}
+
+func mustBaselineJSON(value any) string {
+	encoded, _ := json.Marshal(value)
+	return string(encoded)
+}
