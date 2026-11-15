@@ -6,7 +6,7 @@
 - 授权依据：2026-11-14 用户确认设计后要求“将拉黑只保留作者拉黑，将单独私信拉黑删除，从私信，会话管理找到的拉黑按钮点击之后直接就是作者拉黑”，并明确“好的将改动提交pr到 https://github.com/zewbby/SpeechFUL-Develop/pulls”；2026-11-15 用户要求“将我拉黑按钮以及黑名单页面ui重做的那个pr推到这个仓库 https://github.com/zewbby/SpeechFUL-Develop”。以上覆盖提交、推送与 PR，不含合并、发布或装机。
 - 需求确认：只有一种拉黑模式，即账号级作者拉黑；私信会话管理的“拉黑”直接执行该模式。按钮和行内文字只保留“拉黑／解除拉黑／解除／取消”，删除灰色补充说明。黑名单页不设分区标题、不显示返回箭头，记录行为头像、名称与描边“解除”，空态为“暂无记录”。确认面板保留但简化：无标题，只有对方头像、名称、“拉黑”（或“解除拉黑”）与“取消”；举报不再出现在拉黑面板。无未决取舍。
 - 更新日期：2026-11-15。
-- 状态：实现已完成；分支已 rebase 到恢复后 `main` 并推送，PR #2 已创建；OpenAPI 契约 PASS，Go 交叉类型检查 PASS（相同 `services/api` 树），迁移执行与 Flutter 测试 NOT_RUN；新仓库 CI 因所有者计费失败未启动；未合并；未发布。
+- 状态：实现已完成；PR #2 head `8e5c540` 的 26 项检查 PASS、1 项按条件 SKIPPED，`mergeable_state=clean`；本地迁移执行与 Flutter 测试仍 NOT_RUN（以 CI 实际运行为准）；未合并；未发布。
 
 ## 目标与范围
 
@@ -48,15 +48,16 @@
 | 迁移 | 2026-11-15 仓库恢复 | 原 `SpeechFUL-Develop` 重建，`main` 为 `69d2adc`，原 PR #150 与分支不存在；本分支 rebase 到 `69d2adc`，保留 7 个提交；`f127504` 因 `main` 已含同一回滚归档修复被自动跳过 |
 | 实现 | 提交 `2c34d8a`（分支 `codex/feat/author-block-unification`） | 已推送至 `zewbby/SpeechFUL-Develop`；[PR #2](https://github.com/zewbby/SpeechFUL-Develop/pull/2) 已创建，base `main` |
 | 验证 | 提交 `2c34d8a`，临时 venv | PASS：`check-direct-message-contract.py`（DM P1／P2／P3）；`check-specs.py` 14 份 spec 全通过；`git diff --check` 无空白错误 |
-| 验证 | PR #2 产品 CI，提交 `2c34d8a`，2026-11-15 | BLOCKED：14 个 workflow 的 job 均未启动（无 runner、无 step），注解为“The job was not started because recent account payments have failed or your spending limit needs to be increased”；属仓库所有者计费／额度问题，不能据此判断代码 |
+| 验证 | PR #2 产品 CI，提交 `8e5c540`，2026-11-15 | PASS：26 项 `success`（含 `policy`、`contract`、`candidate`、`rehearsal`、`go-postgres`、`feed-postgres`、`reliable-chat-sql`、`flutter`、`flutter-and-real-feed`、`avatar-postgres-https`、`mobile-snapshot`、`mobile-recovery` 等），`actual-process-acceptance` 按条件 `skipped`；`mergeable_state=clean`。首次运行因仓库所有者计费问题 job 全部未启动（0 step、注解提示付款失败），修复 Billing 后重跑通过 |
+| 已知缺口 | 同上 | `DELETED` 投影与 CLOSED 账号跳过分支仍无专项测试；`actual-process-acceptance` 为条件跳过而非通过 |
 
 ## 阻碍与下一步
 
-本地无 Flutter SDK 与 PostgreSQL／goose 夹具，Go 只完成交叉类型检查，不能把静态核对当作通过。PR #2 head `2c34d8a` 的 CI 因仓库所有者计费／额度问题全部未启动，需先修复 Billing 才能复验；不能把原仓库 #150 的 CI 结果当作本 PR 证据。新 `main` 的迁移止于 `0039`，当前没有其他开放 0040；本分支保持 `0040`。合并与发布需另行授权。
+本地无 Flutter SDK 与 PostgreSQL／goose 夹具，但 PR #2 head `8e5c540` 的产品 CI 已实际运行并通过（26 PASS、1 项按条件 SKIPPED），迁移与 Flutter 证据以 CI 为准；不能把原仓库 #150 的 CI 结果当作本 PR 证据。新 `main` 的迁移止于 `0039`，当前没有其他开放 0040；本分支保持 `0040`。合并与发布需另行授权。
 
 ## 复审结论
 
 - P1 迁移版本冲突：不在本分支推测性改号；按上述合并顺序处理。
 - P2 迁移无数据覆盖：`5c59199` 已覆盖复制、最早记录去重与旧表清空；`DELETED` 投影与 CLOSED 账号跳过分支仍无专项测试，列为已知缺口。
 - P3 黑名单刷新失败：`6ce1a71` 已修复并加测试；无调用的 `blocks()`、3 个孤儿翻译键按最小改动原则保留；`messaging.md:91` 与 `moderation.md:64` 一致，不改。
-- 已按授权把 rebase 后的 `codex/feat/author-block-unification` 推送到新仓库并创建 [PR #2](https://github.com/zewbby/SpeechFUL-Develop/pull/2)；新仓库 CI 因计费问题尚未实际运行。
+- 已按授权把 rebase 后的 `codex/feat/author-block-unification` 推送到新仓库并创建 [PR #2](https://github.com/zewbby/SpeechFUL-Develop/pull/2)；head `8e5c540` 的 CI 26 项 PASS、1 项 SKIPPED，`mergeable_state=clean`。
