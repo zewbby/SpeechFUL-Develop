@@ -270,3 +270,14 @@ DO $$ BEGIN
   GRANT EXECUTE ON FUNCTION c_posts.accounts_blocked(uuid,uuid) TO hnuhole_c_runtime;
  END IF;
 END $$;
+
+-- 0040: only source-table triggers can advance private prepared-read facts.
+DO $$ BEGIN
+ IF to_regclass('c_comments.read_scope_versions') IS NOT NULL THEN
+  REVOKE ALL ON c_comments.read_scope_versions,c_comments.read_post_versions,c_comments.read_comment_versions,
+   c_posts.read_identity_versions,c_posts.read_account_versions FROM PUBLIC,hnuhole_c_runtime,hnuhole_c_recovery,hnuhole_business;
+  GRANT SELECT ON c_comments.read_scope_versions,c_comments.read_post_versions,c_comments.read_comment_versions,
+   c_posts.read_identity_versions,c_posts.read_account_versions TO hnuhole_c_runtime;
+  REVOKE ALL ON FUNCTION c_comments.advance_read_versions() FROM PUBLIC,hnuhole_c_runtime,hnuhole_c_recovery,hnuhole_business;
+ END IF;
+END $$;

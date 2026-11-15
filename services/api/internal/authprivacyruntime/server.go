@@ -407,7 +407,7 @@ func Run(ctx context.Context, c Config, service authprivacyhttp.Service) error {
 						"total_ns", t.Total.Nanoseconds(), "succeeded", t.Succeeded)
 				}
 			}
-			community, err = community.WithComments(ctx, authprivacy.CommentConfig{KeyKey: commandKey, FingerprintKey: fingerprintKey, Snapshots: settings, SnapshotStore: snapshotStore, ObserveRead: readObserver})
+			community, err = community.WithComments(ctx, authprivacy.CommentConfig{KeyKey: commandKey, FingerprintKey: fingerprintKey, Snapshots: settings, SnapshotStore: snapshotStore, ObserveRead: readObserver, PreparedReads: c.Comments.PreparedReads})
 			if err != nil {
 				return err
 			}

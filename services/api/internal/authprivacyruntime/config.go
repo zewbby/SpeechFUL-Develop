@@ -48,6 +48,7 @@ type CommentsConfig struct {
 	FingerprintKeyFile string                  `json:"fingerprintKeyFile"`
 	Snapshots          *commentsnapshot.Config `json:"snapshots,omitempty"`
 	ObserveReadTimings bool                    `json:"observeReadTimings,omitempty"`
+	PreparedReads      bool                    `json:"preparedReads,omitempty"`
 }
 
 var errCommentSnapshotConfiguration = errors.New("invalid comment snapshot configuration")
