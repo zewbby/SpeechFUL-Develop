@@ -27,12 +27,41 @@ import (
 )
 
 type baselineAcquireKey struct{}
-type baselinePoolTracer struct{}
+type baselineOperationKey struct{}
+type baselinePoolTracer struct{ reportError func(string, string) }
 
 func (baselinePoolTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryStartData) context.Context {
 	return ctx
 }
-func (baselinePoolTracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+func (tracer baselinePoolTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
+	if data.Err == nil {
+		return
+	}
+	code, class := "client", "other"
+	var serverError interface{ SQLState() string }
+	if errors.As(data.Err, &serverError) {
+		code = serverError.SQLState()
+	}
+	switch code {
+	case "40P01":
+		class = "deadlock"
+	case "40001":
+		class = "serialization"
+	case "55P03":
+		class = "lock_timeout"
+	case "57014":
+		class = "query_cancelled"
+	case "25P02":
+		class = "failed_transaction"
+	case "08003", "08006", "57P01":
+		class = "connection"
+	}
+	readtiming.Span(ctx, "baseline_sql_error_"+class)()
+	if tracer.reportError != nil {
+		operation, _ := ctx.Value(baselineOperationKey{}).(string)
+		tracer.reportError(code, operation)
+	}
+}
 func (baselinePoolTracer) TraceAcquireStart(ctx context.Context, _ *pgxpool.Pool, _ pgxpool.TraceAcquireStartData) context.Context {
 	return context.WithValue(ctx, baselineAcquireKey{}, readtiming.Span(ctx, "pool_wait"))
 }
@@ -159,7 +188,9 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 	}
 	poolConfig := l.cp.Config()
 	poolConfig.MaxConns, poolConfig.MinConns = 12, 0
-	poolConfig.ConnConfig.Tracer = baselinePoolTracer{}
+	poolConfig.ConnConfig.Tracer = baselinePoolTracer{reportError: func(code, operation string) {
+		t.Logf("baseline SQL error state=%s operation=%s (SQL and parameters omitted)", code, operation)
+	}}
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		t.Fatal(err)
@@ -231,6 +262,7 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 				defer wg.Done()
 				<-start
 				requestCtx, trace := readtiming.Start(ctx)
+				requestCtx = context.WithValue(requestCtx, baselineOperationKey{}, operation.kind)
 				started := time.Now()
 				err := operation.run(requestCtx, wave+warmup)
 				sample := readBaselineSample{Kind: operation.kind, Index: wave, ElapsedNS: time.Since(started).Nanoseconds(), Observation: trace.Snapshot()}
