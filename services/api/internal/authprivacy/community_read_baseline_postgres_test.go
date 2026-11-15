@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	commentmodel "github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/comments"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/postmedia"
@@ -28,12 +29,12 @@ import (
 
 type baselineAcquireKey struct{}
 type baselineOperationKey struct{}
-type baselinePoolTracer struct{ reportError func(string, string) }
+type baselinePoolTracer struct{ reportError func(string, string, uint32) }
 
 func (baselinePoolTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceQueryStartData) context.Context {
 	return ctx
 }
-func (tracer baselinePoolTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
+func (tracer baselinePoolTracer) TraceQueryEnd(ctx context.Context, conn *pgx.Conn, data pgx.TraceQueryEndData) {
 	if data.Err == nil {
 		return
 	}
@@ -53,6 +54,18 @@ func (tracer baselinePoolTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn,
 		class = "lock_timeout"
 	case "57014":
 		class = "query_cancelled"
+		var server *pgconn.PgError
+		if errors.As(data.Err, &server) {
+			switch server.Message {
+			case "canceling statement due to user request":
+				class = "user_cancel"
+			case "canceling statement due to statement timeout":
+				class = "statement_timeout"
+			case "canceling statement due to conflict with recovery":
+				class = "recovery_conflict"
+			}
+		}
+		code += "/" + class
 	case "25P02":
 		class = "failed_transaction"
 	case "08003", "08006", "57P01":
@@ -61,7 +74,7 @@ func (tracer baselinePoolTracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn,
 	readtiming.Span(ctx, "baseline_sql_error_"+class)()
 	if tracer.reportError != nil {
 		operation, _ := ctx.Value(baselineOperationKey{}).(string)
-		tracer.reportError(code, operation)
+		tracer.reportError(code, operation, conn.PgConn().PID())
 	}
 }
 func (baselinePoolTracer) TraceAcquireStart(ctx context.Context, _ *pgxpool.Pool, _ pgxpool.TraceAcquireStartData) context.Context {
@@ -74,13 +87,20 @@ func (baselinePoolTracer) TraceAcquireEnd(ctx context.Context, _ *pgxpool.Pool, 
 }
 
 type readBaselineSample struct {
-	Kind        string                 `json:"kind"`
-	Index       int                    `json:"index"`
-	ElapsedNS   int64                  `json:"elapsedNS"`
-	Error       string                 `json:"error,omitempty"`
-	ErrorCode   string                 `json:"errorCode,omitempty"`
-	ErrorStatus int                    `json:"errorStatus,omitempty"`
-	Observation readtiming.Observation `json:"observation"`
+	Kind          string                 `json:"kind"`
+	Index         int                    `json:"index"`
+	ElapsedNS     int64                  `json:"elapsedNS"`
+	WallStartNS   int64                  `json:"wallStartNS"`
+	WallEndNS     int64                  `json:"wallEndNS"`
+	WallElapsedNS int64                  `json:"wallElapsedNS"`
+	RawElapsedNS  int64                  `json:"rawElapsedNS"`
+	WallGoDriftNS int64                  `json:"wallGoDriftNS"`
+	RawGoDriftNS  int64                  `json:"rawGoDriftNS"`
+	ClockStable   bool                   `json:"clockStable"`
+	Error         string                 `json:"error,omitempty"`
+	ErrorCode     string                 `json:"errorCode,omitempty"`
+	ErrorStatus   int                    `json:"errorStatus,omitempty"`
+	Observation   readtiming.Observation `json:"observation"`
 }
 
 func baselineInt(t *testing.T, key string, fallback, lower, upper int) int {
@@ -190,8 +210,8 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 	}
 	poolConfig := l.cp.Config()
 	poolConfig.MaxConns, poolConfig.MinConns = 12, 0
-	poolConfig.ConnConfig.Tracer = baselinePoolTracer{reportError: func(code, operation string) {
-		t.Logf("baseline SQL error state=%s operation=%s (SQL and parameters omitted)", code, operation)
+	poolConfig.ConnConfig.Tracer = baselinePoolTracer{reportError: func(code, operation string, pid uint32) {
+		t.Logf("baseline SQL error state=%s operation=%s backend_pid=%d (SQL and parameters omitted)", code, operation, pid)
 	}}
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
@@ -265,6 +285,8 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 	var mu sync.Mutex
 	measurements := make([]readBaselineSample, 0, samples*len(operations))
 	warmupFailures := make([]readBaselineSample, 0)
+	_, cohortRawTrace := readtiming.Start(ctx)
+	cohortClockStart := time.Now()
 	for wave := -warmup; wave < samples; wave++ {
 		start := make(chan struct{})
 		var wg sync.WaitGroup
@@ -279,7 +301,14 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 				requestCtx = context.WithValue(requestCtx, baselineOperationKey{}, operation.kind)
 				started := time.Now()
 				err := operation.run(requestCtx, wave+warmup)
-				sample := readBaselineSample{Kind: operation.kind, Index: wave, ElapsedNS: time.Since(started).Nanoseconds(), Observation: trace.Snapshot()}
+				elapsed := time.Since(started).Nanoseconds()
+				wallEnd := time.Now().UnixNano()
+				observation := trace.Snapshot()
+				wallElapsed := wallEnd - started.UnixNano()
+				sample := readBaselineSample{Kind: operation.kind, Index: wave, ElapsedNS: elapsed, Observation: observation,
+					WallStartNS: started.UnixNano(), WallEndNS: wallEnd, WallElapsedNS: wallElapsed, RawElapsedNS: observation.ElapsedNanoseconds,
+					WallGoDriftNS: wallElapsed - elapsed, RawGoDriftNS: observation.ElapsedNanoseconds - elapsed,
+					ClockStable: baselineClockStable(wallElapsed, elapsed, observation.ElapsedNanoseconds)}
 				if err != nil {
 					sample.Error = err.Error()
 					var business *PostError
@@ -293,7 +322,7 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 					mu.Lock()
 					measurements = append(measurements, sample)
 					mu.Unlock()
-				} else if sample.Error != "" {
+				} else if sample.Error != "" || !sample.ClockStable {
 					mu.Lock()
 					warmupFailures = append(warmupFailures, sample)
 					mu.Unlock()
@@ -303,6 +332,11 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 		close(start)
 		wg.Wait()
 	}
+	cohortClockEnd := time.Now()
+	cohortGoElapsed := cohortClockEnd.Sub(cohortClockStart).Nanoseconds()
+	cohortWallElapsed := cohortClockEnd.UnixNano() - cohortClockStart.UnixNano()
+	cohortRawElapsed := cohortRawTrace.Snapshot().ElapsedNanoseconds
+	environmentValid := baselineClockStable(cohortWallElapsed, cohortGoElapsed, cohortRawElapsed)
 	sort.Slice(measurements, func(i, j int) bool {
 		if measurements[i].Index != measurements[j].Index {
 			return measurements[i].Index < measurements[j].Index
@@ -321,6 +355,7 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 		"clock":         "CLOCK_MONOTONIC_RAW stages; Go monotonic client elapsed", "samples": measurements,
 		"goVersion": runtime.Version(), "goMaxProcs": runtime.GOMAXPROCS(0),
 		"transactionSettings": transactionSettings,
+		"cohortClock":         map[string]any{"wallStartNS": cohortClockStart.UnixNano(), "wallEndNS": cohortClockEnd.UnixNano(), "wallElapsedNS": cohortWallElapsed, "goElapsedNS": cohortGoElapsed, "rawElapsedNS": cohortRawElapsed, "wallGoDriftNS": cohortWallElapsed - cohortGoElapsed, "maximumDriftNS": int64(250 * time.Millisecond)},
 		"holdBoundary":        "successful locking SELECT response to transaction completion response; failure boundary separately flagged; sums include traced precheck/final transactions; independent Abort freeze persistence is covered by gate_abort, not original gate_hold",
 	}
 	if fresh {
@@ -338,8 +373,11 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 			if sample.Kind != operation.kind {
 				continue
 			}
-			if sample.Error != "" || !sample.Observation.ClockValid || sample.Observation.Truncated {
+			if sample.Error != "" || !sample.Observation.ClockValid || sample.Observation.Truncated || !sample.ClockStable {
 				failures++
+			}
+			if !sample.ClockStable {
+				environmentValid = false
 			}
 			if sample.Error != "" {
 				requestFailures++
@@ -379,6 +417,18 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 			"readConflicts": conflicts, "readRebuilds": rebuilds}
 	}
 	result["stats"], result["failures"], result["errorCounts"] = stats, failures, errorCounts
+	for _, sample := range warmupFailures {
+		if !sample.ClockStable {
+			environmentValid = false
+		}
+	}
+	result["environmentValid"] = environmentValid
+	result["environmentResult"] = "PASS"
+	if !environmentValid {
+		result["environmentResult"] = "INVALID"
+		failures++
+		result["failures"] = failures
+	}
 	if failures != 0 {
 		var state, reason string
 		if err := l.cp.QueryRow(ctx, `SELECT gate_state,COALESCE(freeze_reason,'') FROM c_auth.authorization_gate WHERE singleton_id=1`).Scan(&state, &reason); err == nil {
@@ -413,6 +463,45 @@ func enableBaselinePreparedReads(config any) bool {
 	}
 	field.SetBool(true)
 	return true
+}
+
+func baselineClockStable(wall, monotonic, raw int64) bool {
+	if wall < 0 || monotonic < 0 || raw < 0 {
+		return false
+	}
+	for _, drift := range []int64{wall - monotonic, raw - monotonic, wall - raw} {
+		if drift > int64(250*time.Millisecond) || drift < -int64(250*time.Millisecond) {
+			return false
+		}
+	}
+	return true
+}
+
+func TestBaselineClockGuardRejectsWallJumpDespiteMatchingMonotonicClocks(t *testing.T) {
+	if baselineClockStable(int64(11300*time.Millisecond), int64(83*time.Millisecond), int64(83*time.Millisecond)) {
+		t.Fatal("matching Go and RAW clocks hid a wall-clock discontinuity")
+	}
+	if !baselineClockStable(int64(100*time.Millisecond), int64(100*time.Millisecond), int64(100*time.Millisecond+time.Microsecond)) {
+		t.Fatal("stable observation was rejected")
+	}
+	if baselineClockStable(-1, 0, 0) || baselineClockStable(int64(time.Second), int64(time.Second), int64(1500*time.Millisecond)) {
+		t.Fatal("negative wall time or RAW drift was accepted")
+	}
+}
+
+func TestBaselineSQLCancellationUsesOnlyWhitelistedReasons(t *testing.T) {
+	for _, test := range []struct{ message, class string }{
+		{"canceling statement due to user request", "user_cancel"},
+		{"canceling statement due to statement timeout", "statement_timeout"},
+		{"canceling statement due to conflict with recovery", "recovery_conflict"},
+		{"unrecognized server text", "query_cancelled"},
+	} {
+		ctx, trace := readtiming.Start(context.Background())
+		baselinePoolTracer{}.TraceQueryEnd(ctx, nil, pgx.TraceQueryEndData{Err: &pgconn.PgError{Code: "57014", Message: test.message}})
+		if trace.Snapshot().Stages["baseline_sql_error_"+test.class].Calls != 1 {
+			t.Fatal("unexpected safe cancellation classification", test.class)
+		}
+	}
 }
 
 func TestBaselinePreparedSwitchAcceptsFunctionFieldsAndRejectsUnsupportedSource(t *testing.T) {
