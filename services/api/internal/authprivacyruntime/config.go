@@ -41,6 +41,8 @@ type PostsConfig struct {
 	CommandKeyFile     string `json:"commandKeyFile"`
 	FingerprintKeyFile string `json:"fingerprintKeyFile"`
 	CursorKeyFile      string `json:"cursorKeyFile"`
+	PreparedFeedReads  bool   `json:"preparedFeedReads,omitempty"`
+	PreparedMediaReads bool   `json:"preparedMediaReads,omitempty"`
 }
 
 type CommentsConfig struct {
