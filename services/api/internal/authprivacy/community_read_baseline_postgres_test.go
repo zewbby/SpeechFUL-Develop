@@ -251,7 +251,7 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 		"freshNonce": fresh, "commentSort": mode, "likeTarget": likeTarget, "warmupFailures": warmupFailures,
 		"clock": "CLOCK_MONOTONIC_RAW stages; Go monotonic client elapsed", "samples": measurements,
 		"goVersion": runtime.Version(), "goMaxProcs": runtime.GOMAXPROCS(0),
-		"holdBoundary": "successful locking SELECT response to transaction completion response; failure boundary separately flagged; sums include all Gate precheck/abort transactions",
+		"holdBoundary": "successful locking SELECT response to transaction completion response; failure boundary separately flagged; sums include traced precheck/final transactions; independent Abort freeze persistence is covered by gate_abort, not original gate_hold",
 	}
 	if fresh {
 		result["nonce"] = "distinct initial snapshot nonce per wave; bounded within existing account quota"
