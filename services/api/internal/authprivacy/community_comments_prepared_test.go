@@ -91,6 +91,32 @@ func TestCommentPreparedErrorContextRebuildPostgres(t *testing.T) {
 	}
 }
 
+func TestCommentPreparedLocateErrorRebuildPostgres(t *testing.T) {
+	l := commentTextLab(t)
+	l.c.comments.preparedReads = true
+	reader := sessionTestAccount(t, l, "prepared_locate_error")
+	identity := identityChange(t, l.c, reader.SessionToken, "CREATE", uuid.Nil, "定位作者").IdentityID
+	post := commentTextPost(t, l, reader.SessionToken, identity)
+	root := preparedComment(t, l, reader.SessionToken, post, identity, "")
+	reply := preparedComment(t, l, reader.SessionToken, post, identity, root)
+	mustExec(t, l.cp, `UPDATE c_comments.tasks SET moderation_hidden=true WHERE comment_id=$1`, reply)
+	calls := 0
+	preparedReadPool(t, l, func(n int) {
+		calls = n
+		if n == 1 {
+			mustExec(t, l.cp, `UPDATE c_comments.tasks SET moderation_hidden=false WHERE comment_id=$1`, reply)
+		}
+	})
+	r, e := l.c.LocateComment(context.Background(), reader.SessionToken, post, reply)
+	if e != nil {
+		t.Fatal("hidden reply's old 404 survived restore", e)
+	}
+	location := r.Value.(CommentLocation)
+	if calls != 2 || location.CommentID != reply || location.RootCommentID == nil || *location.RootCommentID != root || location.Cursor == nil {
+		t.Fatal("locate error did not rebuild its resource binding", location, calls)
+	}
+}
+
 func TestCommentPreparedCustomGateFallbackPostgres(t *testing.T) {
 	l := commentTextLab(t)
 	l.c.comments.preparedReads = true
@@ -262,7 +288,7 @@ func TestCommentPreparedAuthorityChangesPostgres(t *testing.T) {
 				t.Fatal(e)
 			}
 			owner := sessionTestAccount(t, l, "prepared_authority_owner")
-			reader := sessionTestAccount(t, l, "prepared_authority_reader")
+			reader := sessionTestAccount(t, l, "prep_authority_reader")
 			identity := identityChange(t, l.c, owner.SessionToken, "CREATE", uuid.Nil, "权限作者").IdentityID
 			post := commentTextPost(t, l, owner.SessionToken, identity)
 			preparedComment(t, l, owner.SessionToken, post, identity, "")

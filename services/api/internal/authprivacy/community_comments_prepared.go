@@ -35,19 +35,24 @@ const commentReadContextVersionsSQL = `WITH root AS (
  SELECT t.comment_id,t.post_id FROM c_comments.tasks t WHERE $3 AND t.comment_id=$1
 ), post AS (
  SELECT p.post_id FROM c_posts.posts p WHERE p.post_id=CASE WHEN $3 THEN (SELECT post_id FROM root) ELSE $1::uuid END
+), located AS (
+ SELECT t.comment_id,t.post_id,t.root_comment_id FROM c_comments.tasks t WHERE t.comment_id=$4::uuid
+ UNION SELECT r.comment_id,r.post_id,r.root_comment_id FROM c_comments.tasks t JOIN c_comments.tasks r ON r.comment_id=t.root_comment_id WHERE t.comment_id=$4::uuid
 )
 SELECT jsonb_build_object(
  'post',(SELECT jsonb_build_array(p.post_id,v.visibility_revision) FROM post p LEFT JOIN c_comments.read_post_versions v USING(post_id)),
  'root',(SELECT jsonb_build_array(r.comment_id,v.projection_revision) FROM root r LEFT JOIN c_comments.read_comment_versions v USING(comment_id)),
+ 'located',(SELECT coalesce(jsonb_agg(jsonb_build_array(l.comment_id,l.post_id,l.root_comment_id,v.projection_revision) ORDER BY l.comment_id),'[]'::jsonb) FROM located l LEFT JOIN c_comments.read_comment_versions v USING(comment_id)),
  'viewer',(SELECT visibility_revision FROM c_posts.read_account_versions WHERE account_id=$2)),
  NOT EXISTS(SELECT 1 FROM post p LEFT JOIN c_comments.read_post_versions v USING(post_id) WHERE v.post_id IS NULL)
  AND NOT EXISTS(SELECT 1 FROM root r LEFT JOIN c_comments.read_comment_versions v USING(comment_id) WHERE v.comment_id IS NULL)
+ AND NOT EXISTS(SELECT 1 FROM located l LEFT JOIN c_comments.read_comment_versions v USING(comment_id) WHERE v.comment_id IS NULL)
  AND EXISTS(SELECT 1 FROM c_posts.read_account_versions WHERE account_id=$2)`
 
 func (p *commentReadPlan) readContextVersions(ctx context.Context, tx pgx.Tx, account uuid.UUID) ([]byte, error) {
 	var data []byte
 	var intact bool
-	e := tx.QueryRow(ctx, commentReadContextVersionsSQL, p.query.ID, account, p.query.Replies).Scan(&data, &intact)
+	e := tx.QueryRow(ctx, commentReadContextVersionsSQL, p.query.ID, account, p.query.Replies, nullablePostID(p.locate)).Scan(&data, &intact)
 	if e != nil {
 		return nil, e
 	}
@@ -352,6 +357,9 @@ func (c *Community) prepareCommentRead(ctx context.Context, tx pgx.Tx, s readSub
 		}
 	}
 	if locate != "" {
+		// Keep author/image/target dependencies even when projection itself
+		// produces a private error before yielding a visible comment.
+		p.dependencies = append(p.dependencies, uuid.MustParse(locate))
 		row, e := readTextComment(ctx, tx, locate, s.account)
 		if errors.Is(e, pgx.ErrNoRows) || e == nil && row.PostID != post {
 			return p, postError("COMMENT_NOT_FOUND", 404)
@@ -359,7 +367,6 @@ func (c *Community) prepareCommentRead(ctx context.Context, tx pgx.Tx, s readSub
 		if e != nil {
 			return p, e
 		}
-		p.dependencies = append(p.dependencies, uuid.MustParse(locate))
 		floor := row.ID
 		if row.RootCommentID != nil {
 			floor = *row.RootCommentID
