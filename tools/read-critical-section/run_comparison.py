@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Frozen M1 comparison on an owned Linux runner; no external database or retry.
+"""Frozen comment/feed/media comparison; no external database or retry.
 
 The baseline is fixed product 69d2adc with only the listed observation/harness
 files overlaid. New product is an exact archive of the requested commit. Logs,
@@ -40,6 +40,7 @@ OVERLAY = (
 )
 MAX_DRIFT_NS = 250_000_000
 KINDS = ("comments", "feed", "image", "like")
+PREPARED_FLAGS = ("preparedReads", "preparedFeedReads", "preparedMediaReads")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 STAGE = re.compile(r"[a-z_]+(?:\.[a-z_]+)*\Z")
 ERROR_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,79}\Z")
@@ -242,7 +243,7 @@ def frozen_configuration(spec):
             "pageSize":50,"feedPageSize":20,"freshNonce":spec["fresh"],"commentSort":spec["sort"],
             "mix":"comments:feed:image:like=1:1:1:1","snapshotBackend":"redis",
             "likeTarget":"comment-like-same-post" if spec["commentLike"] else "post-like-same-post",
-            "goVersion":"go1.22.2"}
+            "goVersion":"go1.22.2", **{key:spec["prepared"] for key in PREPARED_FLAGS}}
 
 
 def public_configuration(data, spec):
@@ -277,8 +278,9 @@ def evaluate_cohort(data, spec, returncode, expected_source=None):
         reasons.append("environment_invalid")
     elif max(clock["wallElapsedNS"], clock["goElapsedNS"], clock["rawElapsedNS"]) - min(clock["wallElapsedNS"], clock["goElapsedNS"], clock["rawElapsedNS"]) > MAX_DRIFT_NS:
         reasons.append("cohort_clock_drift")
-    if data.get("preparedReads") is not spec["prepared"]:
-        reasons.append("wrong_prepared_switch")
+    for flag in PREPARED_FLAGS:
+        if data.get(flag) is not spec["prepared"]:
+            reasons.append("wrong_"+flag)
     if expected_source is not None and data.get("sourceCommit") != expected_source:
         reasons.append("wrong_source_commit")
     if type(data.get("warmupFailures")) is not list or data.get("warmupFailures"):
@@ -324,8 +326,10 @@ def evaluate_cohort(data, spec, returncode, expected_source=None):
             anchors = sum(stage.get("calls", 0) for name, stage in stages.items() if name.endswith("anchor_write"))
             if not hold_calls or hold <= 0 or anchors != 1 or any(name.endswith("gate_hold_boundary_uncertain") for name in stages):
                 reasons.append("invalid_transaction_boundary_" + kind)
-            if kind == "comments" and spec["prepared"] and not any(name.endswith("prepare_read") for name in stages):
-                reasons.append("prepared_path_not_observed")
+            if kind in ("comments", "feed", "image") and spec["prepared"] and not any(
+                name.endswith("prepare_read") and stage.get("calls",0)>0 for name,stage in stages.items()
+            ):
+                reasons.append("prepared_path_not_observed_"+kind)
             holds.append(hold)
             conflicts += sum(stage.get("calls", 0) for name, stage in stages.items() if name.endswith("prepared_read_conflict"))
             rebuilds += sum(stage.get("calls", 0) for name, stage in stages.items() if name.endswith("prepared_read_rebuild"))
@@ -485,7 +489,7 @@ def run(args):
     public, private = output/"public", output/"private"
     public.mkdir(mode=0o700); private.mkdir(mode=0o700)
     reports, pairs = [], []
-    summary = {"result": "NOT_RUN", "scope": "M1 base and comment reads only", "headCommit": head, "baselineProductCommit": BASELINE,
+    summary = {"result": "NOT_RUN", "scope": "M1 comment, M2 feed and M3 media prepared reads", "headCommit": head, "baselineProductCommit": BASELINE,
                "declaredOrder": [spec["label"] for spec in profiles()], "hardThresholds": {"mainGateHoldP95ReductionPercent": 50, "otherUserFeedP95ReductionPercent": 30},
                "freshAndScale": "reported separately; scale has eight samples and is not sufficient p95 acceptance", "cohorts": reports, "pairs": pairs,
                "performanceResult":"NOT_RUN","prepareOnly":args.prepare_only}

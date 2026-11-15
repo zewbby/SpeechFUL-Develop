@@ -24,11 +24,12 @@ def good_data(spec):
     samples = []
     for index in range(spec["samples"]):
         for kind in comparison.KINDS:
+            stages={kind+".gate_hold":dict(nanoseconds=80,calls=2),kind+".anchor_write":dict(nanoseconds=10,calls=1)}
+            if spec["prepared"] and kind in ("comments","feed","image"):
+                stages[kind+".prepare_read"]=dict(nanoseconds=20,calls=1)
             samples.append(dict(kind=kind,index=index,elapsedNS=100,wallStartNS=1000,wallEndNS=1100,wallElapsedNS=100,rawElapsedNS=100,
                                 wallGoDriftNS=0,rawGoDriftNS=0,clockStable=True,
-                                observation=dict(clockValid=True,truncated=False,stages={
-                                    "comments.gate_hold":dict(nanoseconds=80,calls=2),"comments.anchor_write":dict(nanoseconds=10,calls=1),
-                                    "comments.prepare_read":dict(nanoseconds=20,calls=1)})))
+                                observation=dict(clockValid=True,truncated=False,stages=stages)))
     value=dict(result="PASS",failures=0,environmentValid=True,environmentResult="PASS",preparedReads=spec["prepared"],
                 comments=spec["comments"],sampleWaves=spec["samples"],warmupWaves=spec["warmup"],poolMaxConns=12,concurrency=4,
                 freshNonce=spec["fresh"],commentSort=spec["sort"],warmupFailures=[],samples=samples,sourceCommit=comparison.BASELINE,
@@ -131,6 +132,42 @@ class ComparisonTests(unittest.TestCase):
         report=comparison.evaluate_cohort(changed,spec,0)
         self.assertIn("wrong_transaction_settings",report["reasons"])
         self.assertEqual("20s",report["actualConfiguration"]["transactionSettings"]["statement_timeout"])
+
+    def test_all_three_prepared_switches_are_required_and_public_per_side(self):
+        for side in (0,1):
+            spec=dict(comparison.profiles()[side],samples=2);data=good_data(spec)
+            report=comparison.evaluate_cohort(data,spec,0)
+            self.assertEqual("PASS",report["result"])
+            for flag in comparison.PREPARED_FLAGS:
+                self.assertIs(spec["prepared"],report["actualConfiguration"][flag])
+                for bad in (not spec["prepared"],None,1,"true"):
+                    changed=copy.deepcopy(data);changed[flag]=bad
+                    with self.subTest(side=side,flag=flag,bad=bad):
+                        report=comparison.evaluate_cohort(changed,spec,0)
+                        self.assertEqual("FAIL",report["result"])
+                        self.assertIn("wrong_"+flag,report["reasons"])
+                changed=copy.deepcopy(data);changed.pop(flag)
+                self.assertEqual("FAIL",comparison.evaluate_cohort(changed,spec,0)["result"])
+
+    def test_new_comments_feed_and_image_each_need_an_observed_prepare(self):
+        spec=dict(comparison.profiles()[1],samples=2);data=good_data(spec)
+        for kind in ("comments","feed","image"):
+            for calls in (None,0):
+                changed=copy.deepcopy(data)
+                stages=next(sample for sample in changed["samples"] if sample["kind"]==kind)["observation"]["stages"]
+                if calls is None:stages.pop(kind+".prepare_read")
+                else:stages[kind+".prepare_read"]["calls"]=calls
+                with self.subTest(kind=kind,calls=calls):
+                    report=comparison.evaluate_cohort(changed,spec,0)
+                    self.assertEqual("FAIL",report["result"])
+                    self.assertIn("prepared_path_not_observed_"+kind,report["reasons"])
+        # The generic helper can emit an unprefixed phase. Judge the request's
+        # own kind, rather than requiring a product-specific naming change.
+        for sample in data["samples"]:
+            stages=sample["observation"]["stages"]
+            if sample["kind"] in ("feed","image"):
+                stages["prepare_read"]=stages.pop(sample["kind"]+".prepare_read")
+        self.assertEqual("PASS",comparison.evaluate_cohort(data,spec,0)["result"])
 
     def test_exact_thresholds_and_non_main_reporting(self):
         spec=dict(comparison.profiles()[0],samples=2)

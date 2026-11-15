@@ -1,4 +1,4 @@
-name: Read critical section M1
+name: Read critical section final
 
 on:
   pull_request:
@@ -26,7 +26,8 @@ concurrency:
 
 jobs:
   # Fourteen serial cohorts on one disposable VM. Draft PRs also run; this
-  # validates M1 base/comment reads, not M2 feed or M3 image prepared paths.
+  # requires comment, feed and image prepared paths on the new side. Missing
+  # switches or unobserved prepare phases fail; preparation is not acceptance.
   frozen-comparison:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -65,7 +66,7 @@ jobs:
           test "$(go version)" = 'go version go1.22.2 linux/amd64'
           /usr/lib/postgresql/16/bin/pg_ctl --version | grep -E '^pg_ctl \(PostgreSQL\) 16\.'
           redis-server --version | grep -E '^Redis server v=7\.'
-      - name: Frozen old/new M1 comparison
+      - name: Frozen old/new comment, feed and media comparison
         id: comparison
         run: |
           python3 tools/read-critical-section/run_comparison.py \

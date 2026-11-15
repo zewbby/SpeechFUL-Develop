@@ -147,7 +147,28 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 	if fresh && samples+warmup > 120 {
 		t.Fatal("fresh nonce measurement must stay within existing account snapshot quota")
 	}
-	l := newPostLab(t)
+	prepared := os.Getenv("REQ001_BASELINE_PREPARED") == "1"
+	l := newLab(t)
+	postConfig := PostConfig{Environment: "text-post-lab"}
+	for _, key := range []*[32]byte{&postConfig.KeyKey, &postConfig.FingerprintKey, &postConfig.CursorKey} {
+		value, keyErr := random32()
+		if keyErr != nil {
+			t.Fatal(keyErr)
+		}
+		*key = value
+	}
+	preparedFeedReads, err := setBaselinePreparedRead(&postConfig, "PreparedFeedReads", prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparedMediaReads, err := setBaselinePreparedRead(&postConfig, "PreparedMediaReads", prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.c, err = l.c.WithPosts(context.Background(), postConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
 	commentConfig := CommentConfig{}
 	commentConfig.KeyKey, err = random32()
 	if err != nil {
@@ -157,13 +178,9 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	preparedReads := os.Getenv("REQ001_BASELINE_PREPARED") == "1"
-	if preparedReads {
-		// Keep one harness source usable against both baseline and feature
-		// commits. An old binary must reject an unavailable requested switch.
-		if !enableBaselinePreparedReads(&commentConfig) {
-			t.Fatal("this source does not implement the requested PreparedReads feature")
-		}
+	preparedReads, err := setBaselinePreparedRead(&commentConfig, "PreparedReads", prepared)
+	if err != nil {
+		t.Fatal(err)
 	}
 	l.c, err = l.c.WithComments(context.Background(), commentConfig)
 	if err != nil {
@@ -351,8 +368,8 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 		"dispatch": "wave barrier; rotating launch order; next wave waits for all four completions",
 		"nonce":    "Redis fixed nonce reuses committed reservation; PostgreSQL initial reads remain within existing quota", "snapshotBackend": snapshotConfig.CreateBackend,
 		"freshNonce": fresh, "commentSort": mode, "likeTarget": likeTarget, "warmupFailures": warmupFailures,
-		"preparedReads": preparedReads,
-		"clock":         "CLOCK_MONOTONIC_RAW stages; Go monotonic client elapsed", "samples": measurements,
+		"preparedReads": preparedReads, "preparedFeedReads": preparedFeedReads, "preparedMediaReads": preparedMediaReads,
+		"clock": "CLOCK_MONOTONIC_RAW stages; Go monotonic client elapsed", "samples": measurements,
 		"goVersion": runtime.Version(), "goMaxProcs": runtime.GOMAXPROCS(0),
 		"transactionSettings": transactionSettings,
 		"cohortClock":         map[string]any{"wallStartNS": cohortClockStart.UnixNano(), "wallEndNS": cohortClockEnd.UnixNano(), "wallElapsedNS": cohortWallElapsed, "goElapsedNS": cohortGoElapsed, "rawElapsedNS": cohortRawElapsed, "wallGoDriftNS": cohortWallElapsed - cohortGoElapsed, "maximumDriftNS": int64(250 * time.Millisecond)},
@@ -452,17 +469,26 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 	}
 }
 
-func enableBaselinePreparedReads(config any) bool {
+// Reflect only exported bools so the same six-file overlay compiles against
+// the fixed old product. A disabled absent flag is the old path; an enabled
+// absent flag must fail before measurements can imply coverage.
+func setBaselinePreparedRead(config any, name string, enabled bool) (bool, error) {
 	value := reflect.ValueOf(config)
 	if value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Struct {
-		return false
+		return false, errors.New("invalid prepared-read configuration")
 	}
-	field := value.Elem().FieldByName("PreparedReads")
-	if !field.IsValid() || field.Kind() != reflect.Bool || !field.CanSet() {
-		return false
+	field := value.Elem().FieldByName(name)
+	if !field.IsValid() {
+		if !enabled {
+			return false, nil
+		}
+		return false, fmt.Errorf("requested prepared-read feature %s is unavailable", name)
 	}
-	field.SetBool(true)
-	return true
+	if field.Kind() != reflect.Bool || !field.CanSet() {
+		return false, fmt.Errorf("prepared-read feature %s must be an exported bool", name)
+	}
+	field.SetBool(enabled)
+	return field.Bool(), nil
 }
 
 func baselineClockStable(wall, monotonic, raw int64) bool {
@@ -506,14 +532,34 @@ func TestBaselineSQLCancellationUsesOnlyWhitelistedReasons(t *testing.T) {
 
 func TestBaselinePreparedSwitchAcceptsFunctionFieldsAndRejectsUnsupportedSource(t *testing.T) {
 	config := struct {
-		ObserveRead   func(CommentReadTiming)
-		PreparedReads bool
+		ObserveRead        func(CommentReadTiming)
+		PreparedReads      bool
+		PreparedFeedReads  bool
+		PreparedMediaReads bool
 	}{}
-	if !enableBaselinePreparedReads(&config) || !config.PreparedReads {
-		t.Fatal("function-valued configuration prevented the exported feature switch")
+	for _, name := range []string{"PreparedReads", "PreparedFeedReads", "PreparedMediaReads"} {
+		for _, enabled := range []bool{true, false} {
+			actual, err := setBaselinePreparedRead(&config, name, enabled)
+			if err != nil || actual != enabled || reflect.ValueOf(config).FieldByName(name).Bool() != enabled {
+				t.Fatal("function-valued configuration prevented the exported feature switch", name, err)
+			}
+		}
+		unsupported := struct{ ObserveRead func(CommentReadTiming) }{}
+		if actual, err := setBaselinePreparedRead(&unsupported, name, false); err != nil || actual {
+			t.Fatal("old disabled source was rejected", name, err)
+		}
+		if _, err := setBaselinePreparedRead(&unsupported, name, true); err == nil {
+			t.Fatal("source without the requested feature was silently accepted", name)
+		}
 	}
-	if enableBaselinePreparedReads(&struct{ ObserveRead func(CommentReadTiming) }{}) || enableBaselinePreparedReads(nil) {
-		t.Fatal("source without the requested feature was silently accepted")
+	for _, invalid := range []any{nil, config, &struct{ PreparedReads string }{}, &struct{ preparedReads bool }{}} {
+		name := "PreparedReads"
+		if _, ok := invalid.(*struct{ preparedReads bool }); ok {
+			name = "preparedReads"
+		}
+		if _, err := setBaselinePreparedRead(invalid, name, true); err == nil {
+			t.Fatal("invalid or non-exported switch was accepted")
+		}
 	}
 }
 
