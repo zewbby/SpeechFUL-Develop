@@ -65,6 +65,7 @@ func (p *feedReadProof) revalidate(ctx context.Context, tx pgx.Tx, a uuid.UUID) 
 
 func (c *Community) readPreparedFeed(ctx context.Context, bearer [32]byte, q PostQuery) (PostResponse, error) {
 	ctx = readtiming.Phase(ctx, "feed")
+	q.deferViewCounts = c.posts.batchListReads
 	return c.withPreparedReadPlan(ctx, bearer, postError("SERVICE_UNAVAILABLE", 503), func(prepareCtx context.Context, tx pgx.Tx, s readSubject) (*preparedReadPlan, error) {
 		proof := &feedReadProof{channel: q.ID, initial: q.Cursor == ""}
 		var position posts.CursorPosition
@@ -87,6 +88,11 @@ func (c *Community) readPreparedFeed(ctx context.Context, bearer [32]byte, q Pos
 						return e
 					}
 				}
+				if q.RefreshCursor != "" && position.Scope != "" {
+					if _, e := c.posts.cursors.DecodeFeedRefresh(q.RefreshCursor, posts.FeedRefreshPosition{AccountID: a.String(), ChannelID: q.ID, Revision: position.FilterRevision}, d.TrustedAt); e != nil {
+						return e
+					}
+				}
 				return nil
 			},
 			Complete: func(tx pgx.Tx, a uuid.UUID, d AuthorizationDecision, _ restriction) (any, error) {
@@ -95,6 +101,8 @@ func (c *Community) readPreparedFeed(ctx context.Context, bearer [32]byte, q Pos
 				}
 				var cursor *string
 				switch page := value.(type) {
+				case posts.IncrementalFeedPage:
+					cursor = page.NextCursor
 				case posts.CrossChannelFeedPage:
 					cursor = page.NextCursor
 				case posts.FeedPage:
@@ -108,6 +116,28 @@ func (c *Community) readPreparedFeed(ctx context.Context, bearer [32]byte, q Pos
 					cursor = &encoded
 				}
 				switch page := value.(type) {
+				case posts.IncrementalFeedPage:
+					page.NextCursor = cursor
+					if !page.RefreshPosition.HeadAt.IsZero() {
+						page.RefreshPosition.ExpiresAt = d.TrustedAt.Add(posts.CursorTTL)
+						token, e := c.posts.cursors.EncodeFeedRefresh(page.RefreshPosition)
+						if e != nil {
+							return nil, e
+						}
+						page.RefreshCursor = &token
+					}
+					ids := make([]string, len(page.Items))
+					for i := range page.Items {
+						ids[i] = page.Items[i].PostID
+					}
+					views, e := readPreparedViewCounts(ctx, tx, ids)
+					if e != nil {
+						return nil, e
+					}
+					for i := range page.Items {
+						page.Items[i].ViewCount = views[page.Items[i].PostID]
+					}
+					return page, nil
 				case posts.CrossChannelFeedPage:
 					page.NextCursor = cursor
 					ids := make([]string, len(page.Items))

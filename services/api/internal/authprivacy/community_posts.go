@@ -19,6 +19,7 @@ type PostConfig struct {
 	Environment                           string
 	KeyKey, FingerprintKey, CursorKey     [32]byte
 	PreparedFeedReads, PreparedMediaReads bool
+	LegacyListReads                       bool
 }
 type postServices struct {
 	commands                   *posts.CommandCodec
@@ -30,6 +31,7 @@ type postServices struct {
 	hiddenPostsEnabled         bool
 	preparedFeedReads          bool
 	preparedMediaReads         bool
+	batchListReads             bool
 }
 type PostResponse struct {
 	Value                 any
@@ -89,6 +91,7 @@ func (c *Community) WithPosts(ctx context.Context, config PostConfig) (*Communit
 	if err = c.pool.QueryRow(ctx, postSearchColumnsSQL).Scan(&clone.posts.typedSearchEnabled); err != nil {
 		return nil, err
 	}
+	clone.posts.batchListReads = clone.posts.typedSearchEnabled && !config.LegacyListReads
 	clone.posts.commandTag = postKeyCommitment("HNUHOLE/POST-COMMAND-KEY-COMMITMENT/V1", config.KeyKey)
 	clone.posts.fingerprintTag = postKeyCommitment("HNUHOLE/POST-FINGERPRINT-KEY-COMMITMENT/V1", config.FingerprintKey)
 	if err = clone.checkPostProtocolKeys(ctx, nil); err != nil {
