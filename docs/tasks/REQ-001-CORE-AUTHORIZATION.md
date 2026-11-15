@@ -52,12 +52,16 @@
 | M3 图片接入 | 外移受保护源字节读取及必要准备，绑定帖子／评论、内容版本和可见性；缩略图复用锁外转码并在其后最终重验 | 生成／读取期间撤销或资源变化均不释放旧字节；访问期限和原图字节保持原契约 |
 | M4 完整验收与回退 | 执行故障交错、真实 SQL、模块产品 CI 和同负载性能对比；按模块提供开关并验证旧路径回退及既有版本／游标兼容 | 安全与业务回归通过，两项硬性能门槛同时达成，证据绑定最终代码；缺项保持待验 |
 
-### 执行契约 v1
+### 执行契约 v2
 
 - D1 关键事务设计：GPT-6 Astra＋xhigh，只读核实全部评论读取、写入口、版本作用域与锁序，给出可直接实施的 M1 契约和风险结论；不修改源码和任务记录。
 - B0 基线：独立执行分支负责测量口径、最小可重复混合负载基线及任务专用验证环境；在 D1 确认前可调查和构建非侵入式 harness，不修改授权／事务语义。仪表实现范围为 readtiming 及所必需的授权测量钩子，须与 D1 协调文件所有权。
 - 总指挥：维护本记录，准备集成与 Linux 验证环境，审清代码及现有回归，D1 交付后固定新接口契约，再安排 M1 实施；不让 M2／M3 绕过 M1 的阶段验收。
 - 写入执行者不得修改本任务状态文档；交付提交、聚焦验证、证据位置和缺口，由总指挥及时集成。每次契约变化固定提交并通知受影响执行者。
+- D1 的 Astra＋xhigh 初步设计已固定以下 M1 接口：新共用 helper 完成可信预检、token／账号／会话代次绑定、独立 RepeatableRead＋ReadOnly 准备、最终 withPostSessionAt 授权和一次冲突重建；准备错误保存在私有 plan 中，在最终授权后裁决。最终资源版本使用普通 SELECT，复用同一原生 C Gate 对业务写的事务围栏，禁止在 Gate 后新增其他作者账号／身份锁。未知自定义 Gate 保留旧读取路径。
+- 版本表契约：`c_comments.read_scope_versions(post_id,root_id,membership_revision,order_revision)`（零 UUID 表示主评论范围）；`c_comments.read_post_versions(post_id,visibility_revision,count_revision)`；`c_comments.read_comment_versions(comment_id,projection_revision,like_count)`；`c_posts.read_identity_versions(identity_id,projection_revision)`；`c_posts.read_account_versions(account_id,projection_revision,visibility_revision)`。均无跨账号 FK；缺行按版本0；迁移回填已有数据，触发器同事务维护，runtime 仅 SELECT。初建验证范围 membership 与适用 order，续页／已复用 nonce 不因历史 order 变化重建；点赞计数和本人点赞状态在最终事务按扫描页 ID 有界刷新。
+- Redis Prepare 与 PG INSERT 在 M1 保留最终授权回调内，以保留最终可信时间、nonce 并发与跨 PG／Redis 配额协议；重候选、排序、Load／Lookup 与投影外移。快照 Publish 只在确认 SQL 提交成功之后；失败／panic 的新建准备由 defer 补偿，已复用／已发布条目不得删除。
+- M1 执行者 owns 新基座文件、评论快照／legacy／定位适配、CommentConfig 与 commentServices 的 `PreparedReads` 开关和新聚焦回归。总指挥 owns 0040 迁移、源表触发器、schema／grants／runtime 配置接线；B0 保留仪表文件所有权。`comments.preparedReads` 默认 false，显式启用并在缺失必需版本结构时启动拒绝；关停走原读取路径但继续维护版本。
 
 ## 验收标准
 
