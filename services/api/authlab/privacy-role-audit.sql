@@ -96,6 +96,8 @@ BEGIN
             allowed := allowed OR (relation.relname IN ('post_view_totals','post_daily_views','feed_preferences') AND privilege IN ('SELECT','INSERT'))
               OR (relation.relname='post_edit_receipts' AND privilege IN ('SELECT','INSERT'))
               OR (relation.relname='post_edit_media' AND privilege IN ('SELECT','INSERT','DELETE'))
+              OR (relation.relname='thumbnails' AND privilege IN ('SELECT','INSERT','DELETE'))
+              OR (relation.relname='thumbnail_storage' AND privilege='SELECT')
               OR (relation.relname='post_tag_terms' AND privilege IN ('SELECT','INSERT','DELETE'))
               -- 0039 author blocks: runtime reads, creates and removes its own
               -- rows; the public snapshot stays immutable (no UPDATE).
