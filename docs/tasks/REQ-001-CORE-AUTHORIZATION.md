@@ -1,7 +1,7 @@
 # REQ-001 — 核心请求授权临界区优化
 
 - 模式：指挥（用户明确调用 `$orchestrator`）；总指挥／唯一状态维护人：当前 Session。
-- 分支：`codex/perf/core-authorization-critical-section`；Worktree：`D:/SpeechFUL/.worktrees/req-001-core-authorization`；PR：未创建。
+- 分支：`codex/perf/core-authorization-critical-section`；Worktree：`D:/SpeechFUL/.worktrees/req-001-core-authorization`；PR：[草稿#3](https://github.com/zewbby/SpeechFUL-Develop/pull/3)。
 - 实际基线：`69d2adcf4b153601ba218de87bb6efccd91da5c8`；2026-11-15 只读核对 `D:/SpeechFUL` 的 `main`、`origin/main` 与远端 `zewbby/SpeechFUL-Develop` 的 main 相同，原工作区干净。
 - 授权依据与边界：用户先要求规划，随后明确调用 `$orchestrator` 并要求“按这个计划开始实施需求001，先完成基线和‘基座＋评论读取’，验收通过后继续接入首页和图片”。已授权隔离实现、验证、必要本地提交及多 Session 协作；关键事务设计与最终安全审查指定 GPT-6 Astra＋xhigh。2026-11-15 用户通过结构化回复明确选择“授权本任务推送、草稿 PR 和 CI”，覆盖本任务分支向 zewbby/SpeechFUL-Develop 推送、创建草稿 PR 及产品／性能 CI；合并和部署仍未获授权。
 - 本轮规则版本：`69d2adcf4b153601ba218de87bb6efccd91da5c8` 的 AGENTS.md、CONTRIBUTING.md、仓库 `.agents/skills/orchestrator/SKILL.md` 及 references。能力：可创建子 Agent、传递消息、读取结果；每位写入执行者使用独立分支与 Worktree。
@@ -9,7 +9,7 @@
 - 需求确认：2026-11-15，用户在两项结构化问题中明确选择：①共用两阶段基座＋评论读取先验收，再接首页和图片，最终完成需求001整体范围；②改造路径 Gate 实际持锁 p95 降低至少50%、其他用户首页 p95 降低至少30%，均作为最终硬门槛，负载和数据规模在基线阶段固定。当前无影响本计划的未决产品取舍。
 - 验证判断补充：用户要求反复性能失败却无明显原因时及时停下重思方向，并明确由总指挥根据证据判断，不能因这一提醒直接停工或机械新增“首次未达即停止”。预先固定的重复轮次与失败后无新假设的重复重跑分别对待；根据失败是否重复、新线索及验证价值决定下一步，不能挑选成功轮次替代失败。
 - 更新日期：2026-11-15。
-- 状态：M1 功能／安全聚焦验收 PASS，性能验收 BLOCKED（WSL 三钟不一致）；隔离 Linux CI 对照入口已完成本地准备，远端产品／性能 CI 尚未执行。M2／M3 仅完成只读关键设计，源码接入未开始；未合并；未发布。
+- 状态：M1“基座＋评论读取”完整验收PASS，绑定75c65f1：13项适用CI全部成功，真实SQL／HTTPS与Astra＋xhigh最终安全审查通过，固定主负载两项硬性能门槛逐轮达成。已推送草稿PR#3；按原授权继续M2／M3，尚未合并、发布。
 
 ## 目标与范围
 
@@ -53,7 +53,7 @@
 | M3 图片接入 | 外移受保护源字节读取及必要准备，绑定帖子／评论、内容版本和可见性；缩略图复用锁外转码并在其后最终重验 | 生成／读取期间撤销或资源变化均不释放旧字节；访问期限和原图字节保持原契约 |
 | M4 完整验收与回退 | 执行故障交错、真实 SQL、模块产品 CI 和同负载性能对比；按模块提供开关并验证旧路径回退及既有版本／游标兼容 | 安全与业务回归通过，两项硬性能门槛同时达成，证据绑定最终代码；缺项保持待验 |
 
-### 执行契约 v3
+### 执行契约 v3（M1，已验收）
 
 - D1 关键事务设计：GPT-6 Astra＋xhigh，只读核实全部评论读取、写入口、版本作用域与锁序，给出可直接实施的 M1 契约和风险结论；不修改源码和任务记录。
 - B0 基线：独立执行分支负责测量口径、最小可重复混合负载基线及任务专用验证环境；在 D1 确认前可调查和构建非侵入式 harness，不修改授权／事务语义。仪表实现范围为 readtiming 及所必需的授权测量钩子，须与 D1 协调文件所有权。
@@ -65,7 +65,18 @@
 - M1 执行者 owns 新基座文件、评论快照／legacy／定位适配、CommentConfig 与 commentServices 的 `PreparedReads` 开关和新聚焦回归。总指挥 owns 0040 迁移、源表触发器、schema／grants／runtime 配置接线；B0 保留仪表文件所有权。`comments.preparedReads` 默认 false，显式启用并在缺失必需版本结构时启动拒绝；关停走原读取路径但继续维护版本。
 - 围栏假设：Astra 核查到 M1 依赖的生产公开数据变更均在同一 C Gate 最终业务事务内；迁移／seed／owner SQL 不能作为并发生产写。版本触发器本身不是任意直接 SQL 的并发围栏。Redis Collect／Drain 是独立存储变化，最终阶段须重验快照存活、epoch 和 TTL。M2 的 ranking worker 直接提交 derived hot_*，待 M1 验收后单独设计其围栏。
 
-### 后续接口预案（仅设计，实施仍依赖 M1 验收）
+### 执行契约 v4（M1通过后的首页／图片接入）
+
+- 生效基线：75c65f1，M1的13项CI、安全复核及主负载硬门槛已通过；规则仍为69d2adc。关键设计沿用Astra＋xhigh D2/D3与本轮实际代码复核；下列实现不得改变已确认业务范围。root独占任务状态、集成与性能runner，不重设负载、阈值或替换失败样本。
+- 顺序：Base先交可运行公共切片，再从集成后的固定SHA并行派Feed／Media，增量集成后完整验收。各writer独立branch／Worktree，不修改本记录。所有新开关默认false，C最低版本39保持旧路径兼容。
+- Base独占community_prepared_reads.go、community_posts.go、必要community_comments.go配置、authprivacyruntime config/server/配置测试、新0041迁移及全部schema完整性检查、grants/audit、历史fixture/inventory/硬编码迁移计数测试。增加PostConfig/postServices的PreparedFeedReads/preparedFeedReads与PreparedMediaReads/preparedMediaReads；runtime JSON为posts.preparedFeedReads及posts.preparedMediaReads，comments.preparedReads不变，不改变WithPostImages/WithRankings公开签名。
+- 通用接口：preparedReadPlan含AfterPrepare func(context.Context)error、Revalidate func(pgx.Tx,uuid.UUID,AuthorizationDecision,restriction)error、Complete preparedReadAction、Release func()。prepareReadPlanAction返回(*preparedReadPlan,error)；withPreparedReadPlan(ctx,bearer,conflictUnavailable,prepare)返回(PostResponse,error)。保留M1 wrapper及评论外层Publish/Abort ownership。RO事务/连接释放后才AfterPrepare；最终原生C授权→Revalidate→准备/CPU错误裁决→Complete→确认提交后响应。非空plan伴错误也须有可用重验依赖，封闭旧404/CPU错误窗口；errReadConflict最多重建一次且绑定首次账号/会话/Gate代次，耗尽用调用者原业务错误，不冻结。Release每attempt恰好一次，覆盖panic/错误/取消/提交未知/成功，不清零已转交响应数组；Complete不是提交后发布钩子。
+- 0041提供c_posts.read_feed_scope_versions(channel_id,membership_revision,publication_revision)和read_feed_post_versions(post_id,projection_revision)，同事务源触发器，无跨账号FK、缺必需行失败关闭、runtime仅SELECT；按M1同等标准绑定函数体、trigger事件/列/WHEN、PK/类型/列级权限。关闭优化不无条件要求可选0040/0041；开启按模块依赖拒绝缺结构。历史fixture helper先撤0041再0040，覆盖0040回填测试、两治理/runtime历史夹具、PostSchema重建和清单；三处硬编码40适配41，不能删安全断言。
+- Feed独占community_posts_read.go、community_rankings.go、新feed/rankings prepared文件、对应SQL/HTTP测试、移动feed_controller.dart与聚焦测试；不改公共配置/迁移。仅PostFeed/PostChannelFeed/ReadRankings，其他含副作用及个人列表保留旧路。遵守下面D2范围版本、ceiling、过滤和热榜不变性设计。loadTimeline同时含preferences/interactions，仅豁免纯timeline请求的可信SERVICE_UNAVAILABLE/RANKINGS_UNAVAILABLE，不能整个catch泛化。
+- Media独占community_post_images.go、community_post_edit_media_read.go、community_comments_business.go图片路由、新media prepared文件与SQL/HTTP测试，以及post_controller.dart的_readMedia及媒体测试；不改公共配置/迁移。遵守下面D3媒体选择/digest/ABA/租约/no-store/过滤设计；关闭RO后CPU，一次最终业务检查点，禁止旧ReadPostImages先提交再转码。仅可信正常读冲突保留会话，鉴权/无可信code/续期持久化失败及命令未知沿原处理。
+- 每writer须原生Gate取消、会话换代、正常冲突一次重建/二次不冻结、提交未知无正文。Base复验M1生命周期；Feed覆盖lookahead/分页/热榜完整候选交错；Media覆盖CPU中删除/编辑/换代与成功数组未被Release清零。真实SQL/Redis均用明确自有一次性库和Linux文件系统，CI和最终全范围安全审查继续独立Astra＋xhigh。
+
+### D2／D3设计细则（v4执行依据）
 
 - D2／D3 关键事务设计由 GPT-6 Astra＋xhigh 只读完成，绑定 M1 产品内容 bf76d2a（原始调查基线5ba8a47）；以下尚无 M2／M3 实现或通过证据。
 - M2 范围为 PostFeed／PostChannelFeed 与独立 ReadRankings；保留当前推荐／最新共用发布时间时间线、热榜独立冻结快照的关系。author／own／liked／favorites、浏览写、私有任务物化、capabilities 和独立 interactions 暂留旧路径，并分别报告性能成本。
@@ -106,10 +117,16 @@
 | 三钟环境检查 | harness35941b5；同一WSL进程启动；独立纯计时复核 | BLOCKED：新主负载无请求／预热失败，但cohort墙钟／Go为12.356秒、RAW为13.479秒，环境INVALID。独立约5秒探针复现RAW／Go约1.090908，最大读钟括号不确定性4695ns；只读adjtimex显示tick=9167，不能归因于读钟起止调度。未修改系统时间、clocksource、超时或重试策略。原始b1-clock-environment-summary.json、pure-clock-probe.json与clock-retrospective-audit.json均保留 |
 | 隔离CI本地准备 | 4029181＋a9e1e63（原d352c22＋c0f09bad）；Linux与Windows聚焦检查 | PASS：Linux13项全通过，含真实leader退出后的后代清理；Windows10 PASS／3平台SKIP。精确旧69＋6文件白名单overlay、新4029181双archive编译PASS，performanceResult=NOT_RUN。4个仪表文件另固定已审内容SHA，防后续业务语义误入旧树。四项CI审查P2（链接图逃逸、超时丢已有样本、父进程退出后遗留后代、未知kind异常未裁决）均已修复并补负例。/home/hnuhole/req001-ci-prep-20261115/linux-unit-c0f09ba.log与ci-prep-validation-evidence.json绑定最终runner／tests字节；编译证据archive-compile-check-final/public，编译后唯一脚本统计保留修正不涉及Go源码或archive／compile路径 |
 | CI入口独立复核 | GPT-6 Astra＋xhigh；a9e1e63 | PASS（AI审查证据）：四项P2关闭，固定仪表SHA、完整配置／工具版本、全部失败样本保留及精确脱敏产物均核对；建议启用入口。仅覆盖CI代码，不代表性能达标、远端运行或GitHub成员批准 |
-| 远端CI／合并／发布 | 未推送本任务分支 | NOT_RUN；本地产品检查与远端CI分别记录；未合并、未发布 |
+| Linux隔离性能CI | head8f5f844；[run43717250990](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43717250990) | PASS：14/14 cohort、2688测量请求、320预热请求，0错误／503；三组Gate持锁p95下降94.74%／97.38%／86.75%，其他用户首页p95下降75.46%／87.48%／66.15%，逐对均满足50%／30%。逐请求三钟最大差43,771ns，cohort最大差64,932ns；新旧完整archive／overlay／固定配置及超时保护均经独立复核。fresh relevant／likes新路径各40次正常冲突、各40次一次重建，均成功；规模检查单列，不用8波证明独立p95。证据E:/Hnuhole-env/req001-remote-perf-20261115/run-43717250990/independent-audit.json |
+| 首轮远端产品CI | head8f5f844；合并预览c1fb6dd，与head tree完全相同 | 评论text、snapshot后端及mobile、共享限流、DM、Feed UI PASS；治理／头像／首页／图片／Android rehearsal等因旧schema夹具保留0040触发器或遗漏表清单FAIL。未冒充全产品通过。178ecf3修复两处owned历史夹具，真实-race两目标PASS（legacy-fixture-fix.log）；其余三处PostSchema夹具聚合修复中。独立进程／设备为SKIP，不计真机 |
+| 历史夹具复验 | 178ecf3＋75c65f1；仅test改动 | PASS：两处历史治理夹具真实SQL聚焦-race通过；PostSchema另三处缺口由精确撤除0040夹具增量及更新事实表清单修复，完整TestPostSchema -race PASS（77.104s），vet/policy PASS。证据/home/hnuhole/req001-legacy-fixtures-20261115/post-schema.log；生产SQL/安全检查未变，远端失败日志未见已识别夹具缺口之外的失败 |
+| 第二轮隔离性能 | head178ecf3；[run43718835361](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43718835361) | PASS：独立14/14与2688请求全部0错，主三组Gate p95下降94.64%／94.78%／94.91%，其他用户feed下降69.46%／70.14%／69.46%。请求三钟最大差0.041282ms，cohort0.021731ms。强冲突fresh relevant／likes各40次一次重建且全成功，评论自身总耗时p95由138.917／140.922ms增至274.290／270.862ms；同场景Gate降至10.239／10.107ms，其他用户feed降至22.654／24.364ms。这是取舍，不宣称所有评论场景更快。证据E:/Hnuhole-env/req001-remote-perf-20261115/run-43718835361/independent-audit.json |
+| 当前head性能与安全 | head75c65f1；[run43719318081](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43719318081)；Astra＋xhigh最终M1复核 | PASS：性能独立14/14、2688请求、预热及请求0错，全部配置／时钟／manifest一致，三组Gate p95下降91.50%／87.01%／88.27%，其他用户首页下降67.57%／56.54%／73.72%。强冲突fresh-likes首页仅改善2.59%，评论总耗时增89.12%，独立场景未满足30%参考值，按预声明不充作主负载硬门槛证据；不隐去该取舍。Astra核实仅test/文档变化、全部生产检查与负例保留，安全PASS。证据E:/Hnuhole-env/req001-remote-perf-20261115/run-43719318081/independent-audit.json |
+| 当前head完整产品CI | head75c65f1；[最终Gate全套](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43719318131) | PASS：13项workflow全成功。Gate完整后端-race真实SQL／vet中新增准备读取、ACK丢失、权限／代次／围栏、schema完整性和历史夹具全部PASS；原先5项历史夹具失败均关闭。其余评论text／snapshot、头像、共享限流、首页backend／UI、治理、图片、DM、Android（含新实例恢复／回退）及协作全PASS。当前merge预览518ed5f5，base69d2adc；不等于生产／真机全覆盖 |
+| 推送／PR／合并／发布 | [草稿PR#3](https://github.com/zewbby/SpeechFUL-Develop/pull/3) | 已按授权推送，M1完成验收；继续M2/M3；未合并、未发布 |
 
 ## 阻碍与下一步
 
-当前阻碍为WSL墙钟／Go monotonic与RAW时间不一致，现环境不适合证明性能硬门槛。B0与Astra已只读复核跨旧／新路径的失败及异常时间缺口；PG16绝对墙钟超时可解释短RAW耗时伴57014，但缺失败时服务端Message，具体取消来源未完全证实。停止在此环境重复性能采样，不放宽SQL保护、校正耗时或以重试吞错，也不改共享系统时钟。
+WSL墙钟／Go monotonic与RAW不一致的历史环境证据原样保留，不用于性能硬门槛。隔离GitHub Linux对照已逐样本独立复核PASS，未放宽SQL保护、校正耗时或吞错重试，也未改共享系统时钟。历史schema夹具适配缺口已修复，当前head75c65f1的全部产品CI通过，M1完整验收PASS。后续按已授权顺序接入首页、图片并继续最终全范围验收，保留fresh强冲突场景取舍。
 
 专用GitHub Ubuntu隔离CI的本地代码、聚焦回归与新旧archive编译已准备好：固定基线69d2adc与精确PR head，旧树仅白名单覆盖仪表／harness，三组主负载逐对判定50%／30%硬门槛，fresh与规模检查独立报告，错误与三钟异常均拒绝；不机械以单次阈值未达停止预先固定的三组对照。原始日志／数据库／证书留在一次性runner，上传仅固定脱敏JSON。现已获本任务Push／草稿PR／CI授权，正在推送并启动验收。M1阶段验收通过后按已有授权继续M2／M3。版本触发器仅在停写／受控迁移事务中安装，未接触正式数据。
