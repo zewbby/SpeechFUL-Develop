@@ -3,10 +3,12 @@ package authprivacy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	commentmodel "github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/comments"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/postmedia"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/posts"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/readtiming"
@@ -43,6 +46,8 @@ type readBaselineSample struct {
 	Index       int                    `json:"index"`
 	ElapsedNS   int64                  `json:"elapsedNS"`
 	Error       string                 `json:"error,omitempty"`
+	ErrorCode   string                 `json:"errorCode,omitempty"`
+	ErrorStatus int                    `json:"errorStatus,omitempty"`
 	Observation readtiming.Observation `json:"observation"`
 }
 
@@ -81,6 +86,15 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 	likes := baselineInt(t, "REQ001_BASELINE_LIKES", min(comments, 1000), 0, comments)
 	samples := baselineInt(t, "REQ001_BASELINE_SAMPLES", 80, 8, 1000)
 	warmup := baselineInt(t, "REQ001_BASELINE_WARMUP", 10, 1, 100)
+	fresh := os.Getenv("REQ001_BASELINE_FRESH") == "1"
+	commentLike := os.Getenv("REQ001_BASELINE_COMMENT_LIKE") == "1"
+	mode := commentmodel.SortMode(os.Getenv("REQ001_BASELINE_SORT"))
+	if !mode.Valid() {
+		t.Fatal("invalid comment sort mode")
+	}
+	if fresh && samples+warmup > 120 {
+		t.Fatal("fresh nonce measurement must stay within existing account snapshot quota")
+	}
 	l := commentTextLab(t)
 	enableImageLab(t, l)
 	ctx := context.Background()
@@ -117,6 +131,10 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := manifest.Value.(postmedia.Group).Images[0].ContentVersionID
+	var likedComment string
+	if err = l.cp.QueryRow(ctx, `SELECT comment_id::text FROM c_comments.tasks WHERE post_id=$1 ORDER BY comment_id LIMIT 1`, accepted.PostID).Scan(&likedComment); err != nil {
+		t.Fatal(err)
+	}
 	poolConfig := l.cp.Config()
 	poolConfig.MaxConns, poolConfig.MinConns = 12, 0
 	poolConfig.ConnConfig.Tracer = baselinePoolTracer{}
@@ -150,15 +168,36 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 			return err
 		}},
 	}
+	likeTarget := "post-like-same-post"
+	if commentLike {
+		likeTarget = "comment-like-same-post"
+		keys := make([]string, warmup+samples)
+		for n := range keys {
+			keys[n] = postTestKey(t)
+		}
+		operations[3].run = func(ctx context.Context, n int) error {
+			liked := n%2 == 0
+			_, err := l.c.ExecuteCommentCommand(ctx, readers[3], keys[n], commentmodel.Intent{Operation: commentmodel.SetLike, CommentID: likedComment, Liked: &liked})
+			return err
+		}
+	}
 	// Reuse a committed nonce so this test measures reads rather than growing
 	// per-account live reservations into the quota ceiling during sampling.
 	nonce := postTestKey(t)
-	operations[0].run = func(ctx context.Context, _ int) error {
-		_, err := l.c.ReadComments(ctx, readers[0], CommentQuery{ID: accepted.PostID, Limit: 50, SnapshotRequest: nonce})
+	nonces := make([]string, warmup+samples)
+	for n := range nonces {
+		nonces[n] = nonce
+		if fresh {
+			nonces[n] = postTestKey(t)
+		}
+	}
+	operations[0].run = func(ctx context.Context, n int) error {
+		_, err := l.c.ReadComments(ctx, readers[0], CommentQuery{ID: accepted.PostID, Limit: 50, Sort: mode, SnapshotRequest: nonces[n]})
 		return err
 	}
 	var mu sync.Mutex
 	measurements := make([]readBaselineSample, 0, samples*len(operations))
+	warmupFailures := make([]readBaselineSample, 0)
 	for wave := -warmup; wave < samples; wave++ {
 		start := make(chan struct{})
 		var wg sync.WaitGroup
@@ -175,10 +214,20 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 				sample := readBaselineSample{Kind: operation.kind, Index: wave, ElapsedNS: time.Since(started).Nanoseconds(), Observation: trace.Snapshot()}
 				if err != nil {
 					sample.Error = err.Error()
+					var business *PostError
+					if errors.As(err, &business) {
+						sample.ErrorCode, sample.ErrorStatus = business.Code, business.Status
+					} else if errors.Is(err, ErrAuthorizationUnavailable) {
+						sample.ErrorCode, sample.ErrorStatus = "AUTHORIZATION_UNAVAILABLE", 503
+					}
 				}
 				if wave >= 0 {
 					mu.Lock()
 					measurements = append(measurements, sample)
+					mu.Unlock()
+				} else if sample.Error != "" {
+					mu.Lock()
+					warmupFailures = append(warmupFailures, sample)
 					mu.Unlock()
 				}
 			}()
@@ -199,20 +248,32 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 		"warmupWaves": warmup, "sampleWaves": samples, "concurrency": 4, "mix": "comments:feed:image:like=1:1:1:1",
 		"dispatch": "wave barrier; rotating launch order; next wave waits for all four completions",
 		"nonce":    "Redis fixed nonce reuses committed reservation; PostgreSQL initial reads remain within existing quota", "snapshotBackend": snapshotConfig.CreateBackend,
+		"freshNonce": fresh, "commentSort": mode, "likeTarget": likeTarget, "warmupFailures": warmupFailures,
 		"clock": "CLOCK_MONOTONIC_RAW stages; Go monotonic client elapsed", "samples": measurements,
+		"goVersion": runtime.Version(), "goMaxProcs": runtime.GOMAXPROCS(0),
 		"holdBoundary": "successful locking SELECT response to transaction completion response; failure boundary separately flagged; sums include all Gate precheck/abort transactions",
 	}
+	if fresh {
+		result["nonce"] = "distinct initial snapshot nonce per wave; bounded within existing account quota"
+	}
 	stats := map[string]any{}
-	failures := 0
+	failures := len(warmupFailures)
+	errorCounts := map[string]int{}
 	for _, operation := range operations {
 		var elapsed, hold, waits, anchor, acquire []int64
 		var holdCalls int64
+		var conflicts, rebuilds int64
+		requestFailures := 0
 		for _, sample := range measurements {
 			if sample.Kind != operation.kind {
 				continue
 			}
 			if sample.Error != "" || !sample.Observation.ClockValid || sample.Observation.Truncated {
 				failures++
+			}
+			if sample.Error != "" {
+				requestFailures++
+				errorCounts[fmt.Sprintf("%d:%s", sample.ErrorStatus, sample.ErrorCode)]++
 			}
 			elapsed = append(elapsed, sample.ElapsedNS)
 			holdNS, waitNS, anchorNS, acquireNS := int64(0), int64(0), int64(0), int64(0)
@@ -232,6 +293,10 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 					acquireNS += stage.Nanoseconds
 				case strings.HasSuffix(name, "gate_hold_boundary_uncertain"):
 					failures++
+				case strings.HasSuffix(name, "prepared_read_conflict"):
+					conflicts += stage.Calls
+				case strings.HasSuffix(name, "prepared_read_rebuild"):
+					rebuilds += stage.Calls
 				}
 			}
 			if requestHoldCalls == 0 || requestAnchorCalls != 1 {
@@ -240,9 +305,10 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 			hold, waits, anchor, acquire = append(hold, holdNS), append(waits, waitNS), append(anchor, anchorNS), append(acquire, acquireNS)
 		}
 		stats[operation.kind] = map[string]any{"elapsed": baselineQuantiles(elapsed), "gateHoldPerRequest": baselineQuantiles(hold), "gateHoldCalls": holdCalls,
-			"gateLockQueryIncludingWait": baselineQuantiles(waits), "anchorWrite": baselineQuantiles(anchor), "poolAcquire": baselineQuantiles(acquire)}
+			"gateLockQueryIncludingWait": baselineQuantiles(waits), "anchorWrite": baselineQuantiles(anchor), "poolAcquire": baselineQuantiles(acquire), "requestFailures": requestFailures,
+			"readConflicts": conflicts, "readRebuilds": rebuilds}
 	}
-	result["stats"], result["failures"] = stats, failures
+	result["stats"], result["failures"], result["errorCounts"] = stats, failures, errorCounts
 	if failures != 0 {
 		var state, reason string
 		if err := l.cp.QueryRow(ctx, `SELECT gate_state,COALESCE(freeze_reason,'') FROM c_auth.authorization_gate WHERE singleton_id=1`).Scan(&state, &reason); err == nil {
