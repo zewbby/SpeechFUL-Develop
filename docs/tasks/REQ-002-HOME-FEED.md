@@ -27,7 +27,7 @@
 
 ## 当前进度与证据
 
-证据目录：[本机验证产物](E:/Hnuhole-env/req002-home-feed-validation-20261116/)。冻结基线为 `1d829b2623a6c32830ee1b74fae6c99a436ad3b3`，本轮被测差异由目录内 `source-manifest.json` 绑定；随后承载相同产品内容的提交补记于此。SQL使用WSL2 Linux文件系统、本任务独立PostgreSQL（55552／55553私有socket）、Go1.22.2；Flutter3.47.5／Dart3.13.4，原pubspec.lock锁定且无依赖升级。真实媒体验证使用本任务独立Python环境及合成图片。未连接正式数据库。
+证据目录：[本机验证产物](E:/Hnuhole-env/req002-home-feed-validation-20261116/)。冻结基线为 `1d829b2623a6c32830ee1b74fae6c99a436ad3b3`，本轮被测差异由目录内 `source-manifest.json` 绑定；承载相同产品内容的提交为 `9eb23a80b42d9b96e3eb9d33725db0c02999c8af`。SQL使用WSL2 Linux文件系统、本任务独立PostgreSQL（55552／55553私有socket）、Go1.22.2；Flutter3.47.5／Dart3.13.4，原pubspec.lock锁定且无依赖升级。真实媒体验证使用本任务独立Python环境及合成图片。未连接正式数据库。
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
