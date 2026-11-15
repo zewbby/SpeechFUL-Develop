@@ -9,7 +9,8 @@
 - 需求确认：2026-11-15，用户在两项结构化问题中明确选择：①共用两阶段基座＋评论读取先验收，再接首页和图片，最终完成需求001整体范围；②改造路径 Gate 实际持锁 p95 降低至少50%、其他用户首页 p95 降低至少30%，均作为最终硬门槛，负载和数据规模在基线阶段固定。当前无影响本计划的未决产品取舍。
 - 验证判断补充：用户要求反复性能失败却无明显原因时及时停下重思方向，并明确由总指挥根据证据判断，不能因这一提醒直接停工或机械新增“首次未达即停止”。预先固定的重复轮次与失败后无新假设的重复重跑分别对待；根据失败是否重复、新线索及验证价值决定下一步，不能挑选成功轮次替代失败。
 - 更新日期：2026-11-15。
-- 状态：M1“基座＋评论读取”完整验收PASS，绑定75c65f1：13项适用CI全部成功，真实SQL／HTTPS与Astra＋xhigh最终安全审查通过，固定主负载两项硬性能门槛逐轮达成。已推送草稿PR#3；按原授权继续M2／M3，尚未合并、发布。
+- 最新模型指令：用户明确要求“现在不要用astra”“切到sol 6.1来继续完成”。已中断仍在运行的旧执行者；后续组合SQL、移动端及最终CI/性能由显式GPT-6.1 Sol会话接手，不再调用Astra。此前Astra设计／审查仅作为已有历史证据保留，覆盖本记录中旧模型约定的后续执行部分。
+- 状态：需求001约定范围实现与验收PASS，完整业务实现绑定aaaab88：16项workflow成功，最终三开关性能逐轮达两项硬门槛，源代码独立审查无未关闭确定缺陷。新main统一拉黑兼容与精确整合树移动端验证已补齐；最后追加兼容回归和本记录不改变已验收业务源码，当前PR head检查以[实时Checks](https://github.com/zewbby/SpeechFUL-Develop/pull/3/checks)为准。PR#3已推送；未合并、未发布。手动长验收、真机与生产边界见下，不冒充全部场景通过。
 
 ## 目标与范围
 
@@ -132,10 +133,14 @@
 | 全模块性能入口准备 | 独立分支cd85ddd，未合入当前集成 | PASS（仅准备）：Linux15项与Baseline单元、新旧archive编译；实际三flags和comments/feed/image准备阶段必须验证，14profile/硬阈值/4仪表SHA/6overlay/种子/请求混合保持不变。performanceResult=NOT_RUN，待全部路由集成后才合入执行。证据/home/hnuhole/req001-final-perf-prep-20261115/validation-evidence.json |
 | v4分片集成与审查 | Base fda1af0，timeline dc07ce2，hot52a392c，post media e3f0a7d＋297f66e | PASS（分片证据）：独立新Astra＋xhigh分别复核Base/timeline/hot/post media，原Media P2“未公开资源错误503而旧路404”已297f66e修复并精确回归52.817s，受理/失败/取消/删除新旧三route及prepare后发布/删除均覆盖，版本缺行仍拒绝。timeline-race80.284s、移动71 tests/analyze（bundle产物及作者退出报告）；hot11 storage原新对照/9交错/native cancel-generation-ACK丢失及原新HTTPS PASS。首轮错误测试断言FAIL与后续PASS均保留。日志/home/hnuhole/req001-feed-20261115/与req001-media-20261115/；这些是作者各分支字节＋已声明共存差异，不冒充完整集成树。评论原图/媒体移动窄处理尚未集成，最终全树SQL/HTTP/CI/性能仍待验 |
 | M1验收提交完整产品CI | head75c65f1；[最终Gate全套](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43719318131) | PASS：13项workflow全成功。Gate完整后端-race真实SQL／vet中新增准备读取、ACK丢失、权限／代次／围栏、schema完整性和历史夹具全部PASS；原先5项历史夹具失败均关闭。其余评论text／snapshot、头像、共享限流、首页backend／UI、治理、图片、DM、Android（含新实例恢复／回退）及协作全PASS。merge预览518ed5f5，base69d2adc；不等于生产／真机全覆盖 |
-| 推送／PR／合并／发布 | [草稿PR#3](https://github.com/zewbby/SpeechFUL-Develop/pull/3) | 已按授权推送，M1完成验收；继续M2/M3；未合并、未发布 |
+| 最终全模块性能（Sol独立复核） | aaaab88；[run43728717147](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43728717147) | PASS：14/14，2688测量＋声明320预热0错；三主轮Gate持锁p95下降89.71%／76.63%／83.95%，其他用户timeline下降68.86%／66.07%／64.53%，均逐对满足50%／30%。请求/整体三钟最大30,959ns/79,190ns；zip digest、完整archive对象、14profiles/四仪表SHA/六overlay/固定配置、三flags及三准备阶段全部独核通过。fresh两新组各40冲突40次一次重建成功，但评论自身p95约翻倍（64.59→123.93ms、65.62→122.93ms）；规模单列，不隐去取舍。服务方法负载覆盖timeline与帖子original，不额外声称hot/thumbnail/comment original或HTTP性能。证据E:/Hnuhole-env/req001-final-ci-sol-20261115/independent-audit.json |
+| 最终完整产品CI | aaaab88；merge preview d47fee3a，tree与head相同，main cde0787 | PASS：16/16 workflow成功（15产品＋1协作）。Gate的hot环境SKIP由同树Feed backend43728717058真实Redis/SQL 11存储组合/9交错/native取消-换代-ACK失及原新HTTPS承接，不能把单job SKIP冒充通过。精确状态/35条hot PASS摘录与完整Gate SKIP名单在E:/Hnuhole-env/req001-final-ci-sol-20261115/{ci-final-status.json,gate-test-boundaries.json}；Android候选与恢复/回退PASS，iOS仅unsigned compile，不计真机 |
+| 新main组合与移动端（Sol） | aaaab88＋仅兼容测试44e2ae4（集成cf5af6d） | PASS：真实42迁移DM/Feed/avatar fresh/upgrade/Down拒绝，保留main双legacy block归并清空断言；真实统一DM block插删/幂等/双方visibility推进/准备读隐藏恢复/进行中feed一次重建7.229s。schema/role-audit/flags负例-race52.639s，runtime min39/默认隔离3.952s，全build/vet PASS。证据/home/hnuhole/req001-main-compat-20261115/（1990 tracked源码与aaa逐字节匹配）。精确aaa移动analyze与158测试PASS、1 DM真实HTTP因缺独立fixture SKIP；host bundle因GitHub sqlite3下载超时BLOCKED，目标平台构建由同树云端Android candidate PASS覆盖，未改依赖/lock/恢复大缓存。证据/home/hnuhole/req001-final-mobile-20261115/。外部WSL重启中断及不可靠shell退出码保留，恢复后Go与Flutter均按可靠退出证据计数 |
+| 安全审查与未运行项 | aaaab88完整树及已审分片；模型切换前完成的Astra证据保留 | PASS（独立AI代码安全审查）：全部模块/新main写围栏/迁移顺延/权限/冻结性能入口核对无未关闭确定缺陷；不是成员批准。actual-process-acceptance仅workflow_dispatch，PR触发SKIP，本轮未跑最长150分钟真实进程/容量/TTL专项；设备、原生Passkey、iOS真机及生产未验，不自动推进历史延期项 |
+| 推送／PR／合并／发布 | [PR#3](https://github.com/zewbby/SpeechFUL-Develop/pull/3) | 已按授权推送，主线冲突已解决、mergeable=true；仅最后兼容_test与验收记录追加，不改已验收业务源码。当前head检查见实时Checks；未合并、未发布 |
 
 ## 阻碍与下一步
 
-WSL墙钟／Go monotonic与RAW不一致的历史环境证据原样保留，不用于性能硬门槛。隔离GitHub Linux对照已逐样本独立复核PASS，未放宽SQL保护、校正耗时或吞错重试，也未改共享系统时钟。历史schema夹具适配缺口已修复，当前head75c65f1的全部产品CI通过，M1完整验收PASS。后续按已授权顺序接入首页、图片并继续最终全范围验收，保留fresh强冲突场景取舍。
+需求001已完成约定的评论、首页及受保护图片接入，最终全模块固定负载、安全及功能证据如上。WSL旧时钟异常、原始fixture错误及外部重启证据均保留，不用其冒充性能通过；未放宽SQL保护、校正耗时、吞错重试或修改共享系统时钟。追加仅兼容测试/验收记录后核对当前PR head的自动检查；合并/部署仍待明确授权。强冲突fresh评论延迟取舍、手动进程专项及设备/生产未验边界继续保留。
 
-专用GitHub Ubuntu隔离CI的本地代码、聚焦回归与新旧archive编译已准备好：固定基线69d2adc与精确PR head，旧树仅白名单覆盖仪表／harness，三组主负载逐对判定50%／30%硬门槛，fresh与规模检查独立报告，错误与三钟异常均拒绝；不机械以单次阈值未达停止预先固定的三组对照。原始日志／数据库／证书留在一次性runner，上传仅固定脱敏JSON。现已获本任务Push／草稿PR／CI授权，正在推送并启动验收。M1阶段验收通过后按已有授权继续M2／M3。版本触发器仅在停写／受控迁移事务中安装，未接触正式数据。
+性能基线69d2adc与精确被测SHA、旧树六项overlay、三轮主负载和两项硬门槛保持冻结；新main变更不进入四条受测业务路径，fixture无DM rows，归因前提已独核。fresh与规模结果独立报告。原始日志／数据库／证书留在一次性runner，仅固定脱敏JSON上传；未接触正式数据。
