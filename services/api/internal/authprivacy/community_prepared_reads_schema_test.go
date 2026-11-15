@@ -62,14 +62,14 @@ func TestCommentPreparedVersionFactsPostgres(t *testing.T) {
 	if count(t, l.cp, `SELECT membership_revision FROM c_comments.read_scope_versions WHERE post_id=$1 AND root_id=$2`, post, root) != repliesBefore+1 {
 		t.Fatal("reply publication did not advance root count dependency")
 	}
-	// Seed a pre-0040 image of this same owned database, then apply the real
+	// Seed a pre-comment-facts image of this owned database, then apply the real
 	// migration Up again to prove upgrade backfill, including historical likes.
 	removePreparedFeedReadFixture(t, l)
 	mustExec(t, l.cp, `DROP FUNCTION c_comments.advance_read_versions() CASCADE;
  DROP TABLE c_comments.read_scope_versions,c_comments.read_post_versions,c_comments.read_comment_versions,
  c_posts.read_identity_versions,c_posts.read_account_versions;
  DROP INDEX c_comments.comment_snapshot_owner_expiry_idx`)
-	sql, err := os.ReadFile("../../migrations/0040_prepared_comment_reads.sql")
+	sql, err := os.ReadFile("../../migrations/0041_prepared_comment_reads.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

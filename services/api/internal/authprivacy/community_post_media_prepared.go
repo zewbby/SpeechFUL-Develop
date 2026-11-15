@@ -14,7 +14,7 @@ import (
 
 // Only current selected media participate. Both a missing resource and a
 // private preparation error retain this proof until final authorization.
-// 0041 versions also detect selection/digest ABA, not just unequal end states.
+// The feed versions detect selection/digest ABA, not just unequal end states.
 const preparedPostMediaHeaderSQL = `SELECT
  COALESCE(p.visibility='PUBLISHED' AND NOT p.moderation_hidden AND NOT c_posts.accounts_blocked($2,p.owner_account_id),false),
  p.edited_image_ids IS NOT NULL,` + publicPostImageCount + `,

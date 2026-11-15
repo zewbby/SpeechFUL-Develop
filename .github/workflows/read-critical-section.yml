@@ -13,7 +13,8 @@ on:
       - 'services/api/internal/authprivacy/community_prepared_reads*.go'
       - 'services/api/internal/authprivacy/community_comments_prepared*.go'
       - 'services/api/internal/authprivacy/community_read_baseline_postgres_test.go'
-      - 'services/api/migrations/0040_prepared_comment_reads.sql'
+      - 'services/api/migrations/0041_prepared_comment_reads.sql'
+      - 'services/api/migrations/0042_prepared_feed_reads.sql'
   workflow_dispatch:
 
 permissions:

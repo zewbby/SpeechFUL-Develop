@@ -2,7 +2,7 @@
 
 - 模式：指挥（用户明确调用 `$orchestrator`）；总指挥／唯一状态维护人：当前 Session。
 - 分支：`codex/perf/core-authorization-critical-section`；Worktree：`D:/SpeechFUL/.worktrees/req-001-core-authorization`；PR：[草稿#3](https://github.com/zewbby/SpeechFUL-Develop/pull/3)。
-- 实际基线：`69d2adcf4b153601ba218de87bb6efccd91da5c8`；2026-11-15 只读核对 `D:/SpeechFUL` 的 `main`、`origin/main` 与远端 `zewbby/SpeechFUL-Develop` 的 main 相同，原工作区干净。
+- 最初基线：`69d2adcf4b153601ba218de87bb6efccd91da5c8`；开始时核对本地与远端main相同且原工作区干净。实施中main前进至`cde078764cbb9e5ccc45899a1c873ba9da8b50aa`（账号级作者拉黑统一），已整合到任务分支；原性能冻结基线69d2adc保留，受测四业务路径在该次main增量中未改动，新增离线DM迁移不含本负载数据。
 - 授权依据与边界：用户先要求规划，随后明确调用 `$orchestrator` 并要求“按这个计划开始实施需求001，先完成基线和‘基座＋评论读取’，验收通过后继续接入首页和图片”。已授权隔离实现、验证、必要本地提交及多 Session 协作；关键事务设计与最终安全审查指定 GPT-6 Astra＋xhigh。2026-11-15 用户通过结构化回复明确选择“授权本任务推送、草稿 PR 和 CI”，覆盖本任务分支向 zewbby/SpeechFUL-Develop 推送、创建草稿 PR 及产品／性能 CI；合并和部署仍未获授权。
 - 本轮规则版本：`69d2adcf4b153601ba218de87bb6efccd91da5c8` 的 AGENTS.md、CONTRIBUTING.md、仓库 `.agents/skills/orchestrator/SKILL.md` 及 references。能力：可创建子 Agent、传递消息、读取结果；每位写入执行者使用独立分支与 Worktree。
 - 需求来源：用户提供的 `C:/Users/24237/Desktop/需求/01-core-authorization.md`，标题“核心请求授权临界区优化”，对应 P0-01。附件为方案草案；其中流程文字不视为执行、部署或扩大范围的授权。
@@ -65,7 +65,13 @@
 - M1 执行者 owns 新基座文件、评论快照／legacy／定位适配、CommentConfig 与 commentServices 的 `PreparedReads` 开关和新聚焦回归。总指挥 owns 0040 迁移、源表触发器、schema／grants／runtime 配置接线；B0 保留仪表文件所有权。`comments.preparedReads` 默认 false，显式启用并在缺失必需版本结构时启动拒绝；关停走原读取路径但继续维护版本。
 - 围栏假设：Astra 核查到 M1 依赖的生产公开数据变更均在同一 C Gate 最终业务事务内；迁移／seed／owner SQL 不能作为并发生产写。版本触发器本身不是任意直接 SQL 的并发围栏。Redis Collect／Drain 是独立存储变化，最终阶段须重验快照存活、epoch 和 TTL。M2 的 ranking worker 直接提交 derived hot_*，待 M1 验收后单独设计其围栏。
 
-### 执行契约 v4（M1通过后的首页／图片接入）
+### 执行契约 v5（整合新main，当前生效）
+
+- 接纳main cde0787的账号级作者拉黑统一与其0040迁移；保留其DM旧数据归并、UI与测试。原本任务0040评论版本迁移顺延0041，原0041 feed/media顺延0042；表、函数、hash、事务/开关接口与v4业务契约不变，所有文件名引用/fixture/CI路径同步，完整迁移计数42。以下v4编号为当时设计/证据编号，按此映射理解，历史PASS仍绑定其原SHA。
+- 三个文本冲突保留双方测试语义，含main新增的旧DM双记录归并/清空断言与本任务版本链；不得简单取一侧。新DM通过最终C事务写blocked_authors，已装版本触发器捕获所有INSERT/DELETE并推进两端viewer可见性；需在新整合树做升级及跨模块组合回归，旧分支证据不冒充新main通过。
+- 规则文件仍69d2adc且无变化；最终代码/SQL/HTTP/移动端/适用CI、三开关完整性能对照与独立Astra审查绑定整合后SHA。Push/PR/CI沿既有授权，合并PR和发布未授权。
+
+### 执行契约 v4（已实施，编号按v5映射）
 
 - 生效基线：75c65f1，M1的13项CI、安全复核及主负载硬门槛已通过；规则仍为69d2adc。关键设计沿用Astra＋xhigh D2/D3与本轮实际代码复核；下列实现不得改变已确认业务范围。root独占任务状态、集成与性能runner，不重设负载、阈值或替换失败样本。
 - 顺序：Base先交可运行公共切片，再从集成后的固定SHA并行派Feed／Media，增量集成后完整验收。各writer独立branch／Worktree，不修改本记录。所有新开关默认false，C最低版本39保持旧路径兼容。

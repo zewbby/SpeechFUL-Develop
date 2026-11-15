@@ -2,7 +2,7 @@ package authprivacy
 
 import "context"
 
-// LF-normalized prosrc installed by 0041, including its complete source map.
+// LF-normalized prosrc installed by 0042, including its complete source map.
 const preparedFeedReadVersionFunctionDigest = "2c9f712d44c990947cc47563ab8513d3478ad65fd23cad40889ab7f091d7c1ce"
 
 func (c *Community) checkPreparedFeedReadSchema(ctx context.Context) error {
@@ -77,7 +77,7 @@ func (c *Community) checkPreparedFeedReadSchema(ctx context.Context) error {
 }
 
 func (c *Community) checkPreparedMediaReadSchema(ctx context.Context) error {
-	// Post manifests use 0041's selected-media projection; comment originals
-	// also require 0040's post/root/comment/identity and account dependencies.
+	// Post manifests use 0042's selected-media projection; comment originals
+	// also require 0041's post/root/comment/identity and account dependencies.
 	return c.checkPreparedFeedReadSchema(ctx)
 }

@@ -271,7 +271,7 @@ DO $$ BEGIN
  END IF;
 END $$;
 
--- 0040: only source-table triggers can advance private prepared-read facts.
+-- 0041: only source-table triggers can advance private prepared-read facts.
 DO $$ BEGIN
  IF to_regclass('c_comments.read_scope_versions') IS NOT NULL THEN
   REVOKE ALL ON c_comments.read_scope_versions,c_comments.read_post_versions,c_comments.read_comment_versions,
@@ -282,7 +282,7 @@ DO $$ BEGIN
  END IF;
 END $$;
 
--- 0041: feed/media proofs are private read-only runtime facts as well.
+-- 0042: feed/media proofs are private read-only runtime facts as well.
 DO $$ BEGIN
  IF to_regclass('c_posts.read_feed_scope_versions') IS NOT NULL THEN
   REVOKE ALL ON c_posts.read_feed_scope_versions,c_posts.read_feed_post_versions

@@ -2,7 +2,7 @@ package authprivacy
 
 import "testing"
 
-// removePreparedReadFixture removes 0041 then 0040 from an
+// removePreparedReadFixture removes feed facts then comment facts from an
 // owned newLab database when a test deliberately reconstructs an older schema.
 // In particular, dropping c_posts alone leaves the public identity/account
 // triggers calling c_comments.advance_read_versions against missing tables.

@@ -2,11 +2,11 @@ package authprivacy
 
 import "context"
 
-// SHA-256 of the LF-normalized prosrc installed by 0040. A same-signature
+// SHA-256 of the LF-normalized prosrc installed by 0041. A same-signature
 // no-op trigger must not pass startup after an incomplete schema restore.
 const preparedCommentReadVersionFunctionDigest = "11e5f1796150f174063e5118aa78e610bffee6314968fb087f0fb61079f24f58"
 
-// Only explicitly enabled prepared reads require 0040. The original path can
+// Only explicitly enabled prepared reads require 0041. The original path can
 // still run while an operator rolls the optional read optimization back.
 func (c *Community) checkPreparedCommentReadSchema(ctx context.Context) error {
 	var ok bool

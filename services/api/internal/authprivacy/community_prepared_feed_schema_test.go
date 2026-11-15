@@ -101,7 +101,7 @@ func TestPreparedFeedVersionFactsPostgres(t *testing.T) {
 
 func applyPreparedFeedFixture(t *testing.T, l *lab) {
 	t.Helper()
-	source, err := os.ReadFile("../../migrations/0041_prepared_feed_reads.sql")
+	source, err := os.ReadFile("../../migrations/0042_prepared_feed_reads.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
