@@ -95,7 +95,33 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 	if fresh && samples+warmup > 120 {
 		t.Fatal("fresh nonce measurement must stay within existing account snapshot quota")
 	}
-	l := commentTextLab(t)
+	l := newPostLab(t)
+	commentConfig := CommentConfig{}
+	commentConfig.KeyKey, err = random32()
+	if err != nil {
+		t.Fatal(err)
+	}
+	commentConfig.FingerprintKey, err = random32()
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparedReads := os.Getenv("REQ001_BASELINE_PREPARED") == "1"
+	if preparedReads {
+		// Keep one harness source usable against both baseline and feature
+		// commits. An old binary must reject an unavailable requested switch.
+		if err = json.Unmarshal([]byte(`{"PreparedReads":true}`), &commentConfig); err != nil {
+			t.Fatal(err)
+		}
+		encoded, _ := json.Marshal(commentConfig)
+		var supported struct{ PreparedReads bool }
+		if json.Unmarshal(encoded, &supported) != nil || !supported.PreparedReads {
+			t.Fatal("this source does not implement the requested PreparedReads feature")
+		}
+	}
+	l.c, err = l.c.WithComments(context.Background(), commentConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
 	enableImageLab(t, l)
 	ctx := context.Background()
 	owner := sessionTestAccount(t, l, "baseline_owner")
@@ -249,7 +275,8 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 		"dispatch": "wave barrier; rotating launch order; next wave waits for all four completions",
 		"nonce":    "Redis fixed nonce reuses committed reservation; PostgreSQL initial reads remain within existing quota", "snapshotBackend": snapshotConfig.CreateBackend,
 		"freshNonce": fresh, "commentSort": mode, "likeTarget": likeTarget, "warmupFailures": warmupFailures,
-		"clock": "CLOCK_MONOTONIC_RAW stages; Go monotonic client elapsed", "samples": measurements,
+		"preparedReads": preparedReads,
+		"clock":         "CLOCK_MONOTONIC_RAW stages; Go monotonic client elapsed", "samples": measurements,
 		"goVersion": runtime.Version(), "goMaxProcs": runtime.GOMAXPROCS(0),
 		"holdBoundary": "successful locking SELECT response to transaction completion response; failure boundary separately flagged; sums include traced precheck/final transactions; independent Abort freeze persistence is covered by gate_abort, not original gate_hold",
 	}
