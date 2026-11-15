@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strconv"
@@ -109,12 +110,7 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 	if preparedReads {
 		// Keep one harness source usable against both baseline and feature
 		// commits. An old binary must reject an unavailable requested switch.
-		if err = json.Unmarshal([]byte(`{"PreparedReads":true}`), &commentConfig); err != nil {
-			t.Fatal(err)
-		}
-		encoded, _ := json.Marshal(commentConfig)
-		var supported struct{ PreparedReads bool }
-		if json.Unmarshal(encoded, &supported) != nil || !supported.PreparedReads {
+		if !enableBaselinePreparedReads(&commentConfig) {
 			t.Fatal("this source does not implement the requested PreparedReads feature")
 		}
 	}
@@ -356,6 +352,32 @@ func TestReadCriticalSectionBaselinePostgres(t *testing.T) {
 	t.Logf("REQ001 baseline comments=%d samples=%d failures=%d artifact=%s stats=%s", comments, samples, failures, output, mustBaselineJSON(stats))
 	if failures != 0 {
 		t.Fatal("mixed load contained failures or invalid measurements")
+	}
+}
+
+func enableBaselinePreparedReads(config any) bool {
+	value := reflect.ValueOf(config)
+	if value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Struct {
+		return false
+	}
+	field := value.Elem().FieldByName("PreparedReads")
+	if !field.IsValid() || field.Kind() != reflect.Bool || !field.CanSet() {
+		return false
+	}
+	field.SetBool(true)
+	return true
+}
+
+func TestBaselinePreparedSwitchAcceptsFunctionFieldsAndRejectsUnsupportedSource(t *testing.T) {
+	config := struct {
+		ObserveRead   func(CommentReadTiming)
+		PreparedReads bool
+	}{}
+	if !enableBaselinePreparedReads(&config) || !config.PreparedReads {
+		t.Fatal("function-valued configuration prevented the exported feature switch")
+	}
+	if enableBaselinePreparedReads(&struct{ ObserveRead func(CommentReadTiming) }{}) || enableBaselinePreparedReads(nil) {
+		t.Fatal("source without the requested feature was silently accepted")
 	}
 }
 
