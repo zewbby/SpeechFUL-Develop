@@ -43,7 +43,7 @@
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
-| 实现 | `perf/notification-read-accel`，基线 `1d829b2`，提交见 CHANGELOG | 迁移 0045、读取 SQL、统计合并、迁移账本与行为断言 |
+| 实现 | `perf/notification-read-accel`，基线 `1d829b2`，实现提交 `44243ca` | 迁移 0045、读取 SQL、统计合并、迁移账本与行为断言 |
 | 验证 | WSL2 Ubuntu-24.04 / PostgreSQL 16，隔离 socket fixture；Go 1.22.2 | PASS：`go build -mod=readonly ./cmd/authdev`、`go vet -mod=readonly ./internal/authprivacy ./internal/authprivacyhttp`；`TestNotificationInboxPostgres`、`TestNotificationInboxIdentityPaginationPostgres`、`TestNotificationInboxHTTPSPostgres`、`TestInboxRoutesAndDisabledMentionsBoundary`、`TestNotificationInboxGooseMigrationPostgres`（fresh/upgrade，含 40,000 行回填与索引断言）、`TestDMGooseFreshAndUpgradePostgres`（fresh/upgrade）、`TestFeedGooseFreshAndUpgradePostgres`（7 模式）、`TestIdentityAvatarGooseFreshAndUpgradePostgres`（独立 fixture）均 PASS |
 | 查询计划 A/B | 同一隔离数据集副本：50,000 条互动记录、120,000 条点赞事件、5,000 条系统通知；账号 5 个身份；VACUUM ANALYZE 后热缓存 | 未读统计（选中身份 + 账号级逐身份）：160.5 ms → 7.4 ms（分组 6.9 ms + 系统 0.5 ms）；全部列表：50.7 ms → 16.9 ms；未读列表：75.1 ms → 6.7 ms。基线每条 LIKE 通知一次 `like_events` 探测（选中 24,000 次、账号级 40,000 次），最终统计走 `inbox_unread` Index Only Scan（324 buffers），未读列表同样命中该索引 |
 | 等价性 | 同上 A/B 库 | 各身份未读数与系统计数逐项一致；全部列表与未读列表前 21 条 ID/时间逐行 `diff` 一致 |
