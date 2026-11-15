@@ -35,7 +35,7 @@
 | 首页协议与交互 | 同上 | PASS：独立新旧方向游标、首屏10→续页5、刷新最新5→缺口5→2→0，保留原列表及旧帖游标；scope／账号／筛选／期限绑定保留。一次冻结的新帖范围补完后再取下一批，避免无限增长的游标状态 |
 | 真实SQL与并发 | sql-final.log；`-race`；独立PG | PASS：六类1/5/10/20/50逐页旧新字段对照，冻结时间组私有ordinal排序；新帖插入、lookahead删除、过滤变化、连续两次冲突；三图实际创建及历史九图编辑混合数据、重排与删除全部图片；最终HTTPS增量路径亦PASS |
 | 扩大回归 | sql-full-02.log | authprivacy与runtime聚焦集合PASS，覆盖原prepared读取、会话/Gate生命周期、个人集合、偏好、隐藏、互动及升级检查；首轮新增HTTP用例的合成昵称不合法FAIL已修正，并由sql-final.log的该完整真实HTTPS用例PASS关闭。Redis、未编译的旧Dart probe等按配置SKIP，不冒充这些范围通过 |
-| 移动端 | mobile-final.log；analyze-final.log | PASS：119项test（含增量补齐、账号切换过期响应、频道切换、原Feed UI、错误路由及真实loopback TLS传输）；analyze无问题 |
+| 移动端 | mobile-final.log；analyze-final.log | PASS：原119项test（含增量补齐、账号切换过期响应、频道切换、原Feed UI、错误路由及真实loopback TLS传输）；补充1项widget完整“下拉三次补齐→滚动→点击加载更多”路径PASS，增量文件4项全部PASS（mobile-widget-flow-pass.log），产品源码仍为9eb23a8，补充test文件哈希见widget-flow-source.json；analyze无问题 |
 | Dart生产传输＋真实HTTPS/PG | performance-03.log | PASS：新增首屏／空刷新解析，原分页与互动路径；原最终事务和prepared两种模式均通过，使用当前源码编译的跨平台Dart kernel。此证据不是手机整机验收 |
 | Go与契约 | go-final.log、openapi-final.log、text-contract.log | PASS：全量host `go test -mod=readonly ./...`、build、vet；无DSN用例SKIP。完整OpenAPI及29项保护操作静态契约通过 |
 | SQL硬门槛 | sql-final.log | PASS：无图首页20与50条均为3条主体SELECT，最终事务刷新阅读量再加1；有图首页为4＋1。其他五类为固定3～5次。准备／最终资源版本证明各1次、会话与Gate固定开销单列；不把这些重复归入隐藏开销 |

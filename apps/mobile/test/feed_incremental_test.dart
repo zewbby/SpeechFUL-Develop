@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hnuhole_mobile/src/posts/feed_api.dart';
 import 'package:hnuhole_mobile/src/posts/feed_controller.dart';
 import 'package:hnuhole_mobile/src/posts/post_api.dart';
 
 import 'feed_ui_test.dart' as feed;
+import 'identity_test_support.dart';
 
 class _Api extends feed.FeedTestApi implements IncrementalFeedApi {
   final requests = <({String? channel, String? older, String? refresh})>[];
@@ -56,6 +59,46 @@ FeedController _controller(_Api api) => FeedController(
 );
 
 void main() {
+  testWidgets('pull refresh fills gaps and load more retains the old cursor', (
+    tester,
+  ) async {
+    final api = _Api()
+      ..pages.addAll([
+        _page(
+          [16, 15, 14, 13, 12, 11, 10, 9, 8, 7],
+          older: 'old-1',
+          refresh: 'head-1',
+        ),
+        _page([28, 27, 26, 25, 24], refresh: 'gap-1'),
+        _page([23, 22, 21, 20, 19], refresh: 'gap-2', after: 24),
+        _page([18, 17], refresh: 'head-2', after: 19),
+        _page([6, 5, 4, 3, 2]),
+      ]);
+    final fixture = feed.FeedFixture(await IdentityTestFixture.create(), api);
+    addTearDown(fixture.dispose);
+    await tester.pumpWidget(feed.screen(fixture));
+    await tester.pumpAndSettle();
+    expect(fixture.controller.homeFeed.timelineItems.length, 10);
+    final list = find.byKey(const ValueKey('production-feed'));
+    for (final expected in [15, 20, 22]) {
+      await tester.drag(list, const Offset(0, 350));
+      await tester.pumpAndSettle();
+      expect(fixture.controller.homeFeed.timelineItems.length, expected);
+      expect(fixture.controller.homeFeed.timelineCursor, 'old-1');
+    }
+    await tester.drag(list, const Offset(0, -20000));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('加载更多'));
+    await tester.tap(find.text('加载更多'));
+    await tester.pumpAndSettle();
+    expect(fixture.controller.homeFeed.timelineItems.map((p) => p.postId), [
+      for (var n = 28; n >= 2; n--) _id(n),
+    ]);
+    expect(api.requests.last.older, 'old-1');
+    expect(api.requests.last.refresh, isNull);
+    expect(fixture.controller.homeFeed.timelineCursor, isNull);
+    expect(tester.takeException(), isNull);
+  });
   test('initial ten, incremental newest five and gap insertion preserve old cursor', () async {
     final api = _Api()
       ..pages.addAll([
