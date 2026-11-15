@@ -161,8 +161,10 @@ func TestModerationLifecycleCommonCStartupWithoutFeaturesPostgres(t *testing.T) 
 	if err := CheckDatabase(ctx, runtime, authprivacyhttp.CommunityService); err == nil {
 		t.Fatal("common C startup accepted partially removed 0018")
 	}
-	// Remove later tags and edits before modeling a pre-moderation database.
-	exec(t, `DROP TRIGGER advance_search_content_revision ON c_posts.posts;
+	// Remove later prepared-read, tags and edit dependencies in this owned fixture.
+	exec(t, `DROP TRIGGER prepared_read_post ON c_posts.posts;
+DROP TRIGGER prepared_read_task ON c_comments.tasks;
+DROP TRIGGER advance_search_content_revision ON c_posts.posts;
 DROP FUNCTION c_posts.advance_search_content_revision();
 DROP TABLE c_posts.search_content_revision;
 DROP TRIGGER post_tag_terms_sync ON c_posts.posts;
