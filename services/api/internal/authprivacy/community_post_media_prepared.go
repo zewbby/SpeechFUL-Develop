@@ -22,7 +22,9 @@ const preparedPostMediaHeaderSQL = `SELECT
  p.edited_image_ids,x.erased_at,v.projection_revision,viewer.visibility_revision,author.projection_revision,
  c_posts.accounts_blocked($2,p.owner_account_id)),
  viewer.account_id IS NOT NULL AND (p.post_id IS NULL OR
- (v.post_id IS NOT NULL AND author.account_id IS NOT NULL AND x.task_id IS NOT NULL))
+ (v.post_id IS NOT NULL AND author.account_id IS NOT NULL AND
+ (NOT COALESCE(p.visibility='PUBLISHED' AND NOT p.moderation_hidden AND NOT c_posts.accounts_blocked($2,p.owner_account_id),false)
+ OR x.task_id IS NOT NULL)))
  FROM (SELECT 1) one
  LEFT JOIN c_posts.posts p ON p.post_id=$1
  LEFT JOIN c_posts.publication_tasks t ON t.post_id=p.post_id

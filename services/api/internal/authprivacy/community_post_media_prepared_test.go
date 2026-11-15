@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/postmedia"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/posts"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/readtiming"
@@ -23,6 +24,11 @@ type preparedMediaFixture struct {
 }
 
 func newPreparedMediaFixture(t *testing.T) preparedMediaFixture {
+	t.Helper()
+	return newPreparedMediaPostFixture(t, true)
+}
+
+func newPreparedMediaPostFixture(t *testing.T, publish bool) preparedMediaFixture {
 	t.Helper()
 	l := newLab(t)
 	config := enablePostLab(t, l)
@@ -42,6 +48,13 @@ func newPreparedMediaFixture(t *testing.T) preparedMediaFixture {
 	accepted := postTestCommand(t, l, owner.SessionToken, postTestKey(t), intent)
 	grant := imageGrant(t, l, owner.SessionToken, accepted, selection.MediaID)
 	imageUpload(t, l, accepted, selection, grant, data)
+	if !publish {
+		var content string
+		if err = l.cp.QueryRow(context.Background(), `SELECT content_version_id::text FROM c_posts.images WHERE task_id=$1 AND version=1`, accepted.TaskID).Scan(&content); err != nil {
+			t.Fatal(err)
+		}
+		return preparedMediaFixture{l: l, config: config, owner: owner, viewer: viewer, post: accepted.PostID, content: content, data: data}
+	}
 	postTestPublish(t, l)
 	r, err := l.c.ReadPostImages(context.Background(), viewer.SessionToken, accepted.PostID, "")
 	if err != nil {
@@ -49,6 +62,96 @@ func newPreparedMediaFixture(t *testing.T) preparedMediaFixture {
 	}
 	return preparedMediaFixture{l: l, config: config, owner: owner, viewer: viewer, post: accepted.PostID,
 		content: r.Value.(postmedia.Group).Images[0].ContentVersionID, data: data}
+}
+
+func readPreparedMediaRoute(ctx context.Context, f preparedMediaFixture, route string) (PostResponse, error) {
+	switch route {
+	case "manifest":
+		return f.l.c.ReadPostImages(ctx, f.viewer.SessionToken, f.post, "")
+	case "original":
+		return f.l.c.ReadPostImages(ctx, f.viewer.SessionToken, f.post, f.content)
+	default:
+		return f.l.c.ReadPostThumbnail(ctx, f.viewer.SessionToken, f.post, f.content)
+	}
+}
+
+func TestPreparedPostMediaPrivatePublicationStatesMatchLegacyPostgres(t *testing.T) {
+	for _, state := range []string{"accepted", "failed", "cancelled", "deleted"} {
+		t.Run(state, func(t *testing.T) {
+			f := newPreparedMediaPostFixture(t, state == "deleted")
+			if state == "failed" || state == "cancelled" {
+				var task string
+				if err := f.l.cp.QueryRow(context.Background(), `SELECT task_id::text FROM c_posts.publication_tasks WHERE post_id=$1`, f.post).Scan(&task); err != nil {
+					t.Fatal(err)
+				}
+				if state == "cancelled" {
+					postTestCommand(t, f.l, f.owner.SessionToken, postTestKey(t), posts.Intent{Operation: posts.Cancel, TaskID: task, ExpectedAttemptVersion: 1})
+				} else {
+					// The same legal terminal transition used by the publication
+					// worker, inside its final business Gate transaction.
+					_, err := f.l.c.withPostSession(context.Background(), f.owner.SessionToken,
+						func(tx pgx.Tx, _ uuid.UUID, d AuthorizationDecision, _ restriction) (any, error) {
+							_, e := tx.Exec(context.Background(), `UPDATE c_posts.publication_attempts SET state='FAILED',terminal_at=$2,failure_code='PUBLICATION_FAILED' WHERE task_id=$1 AND version=1`, task, d.TrustedAt)
+							return nil, e
+						})
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+			} else if state == "deleted" {
+				postTestCommand(t, f.l, f.owner.SessionToken, postTestKey(t), posts.Intent{Operation: posts.DeletePost, PostID: f.post})
+			}
+			for _, enabled := range []bool{false, true} {
+				f.config.PreparedMediaReads = enabled
+				var err error
+				f.l.c, err = f.l.c.WithPosts(context.Background(), f.config)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, route := range []string{"manifest", "original", "thumbnail"} {
+					r, e := readPreparedMediaRoute(context.Background(), f, route)
+					postTestError(t, e, "MEDIA_NOT_FOUND", 404)
+					if r.Value != nil || !r.ExpiresAt.IsZero() {
+						t.Fatal("private publication state returned content or renewal", state, route, enabled)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestPreparedPostMediaPublicationChangesRebuildPrivateProofPostgres(t *testing.T) {
+	for _, publish := range []bool{true, false} {
+		for _, route := range []string{"manifest", "original", "thumbnail"} {
+			t.Run(route+map[bool]string{true: "_publish", false: "_delete"}[publish], func(t *testing.T) {
+				f := newPreparedMediaPostFixture(t, !publish)
+				preparedReadPool(t, f.l, func(n int) {
+					if n == 1 {
+						if publish {
+							postTestPublish(t, f.l)
+						} else {
+							postTestCommand(t, f.l, f.owner.SessionToken, postTestKey(t), posts.Intent{Operation: posts.DeletePost, PostID: f.post})
+						}
+					}
+				})
+				ctx, trace := readtiming.Start(context.Background())
+				r, err := readPreparedMediaRoute(ctx, f, route)
+				if publish {
+					if err != nil || r.Value == nil {
+						t.Fatal("stale private absence won over newly published selection", err)
+					}
+				} else {
+					postTestError(t, err, "MEDIA_NOT_FOUND", 404)
+					if r.Value != nil || !r.ExpiresAt.IsZero() {
+						t.Fatal("deleted media released a private plan")
+					}
+				}
+				if preparedMediaCalls(trace.Snapshot(), "prepared_read_rebuild") != 1 {
+					t.Fatal("publication change skipped its one bounded rebuild")
+				}
+			})
+		}
+	}
 }
 
 func preparedMediaCalls(observation readtiming.Observation, suffix string) int64 {
