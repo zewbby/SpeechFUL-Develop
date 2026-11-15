@@ -281,3 +281,14 @@ DO $$ BEGIN
   REVOKE ALL ON FUNCTION c_comments.advance_read_versions() FROM PUBLIC,hnuhole_c_runtime,hnuhole_c_recovery,hnuhole_business;
  END IF;
 END $$;
+
+-- 0041: feed/media proofs are private read-only runtime facts as well.
+DO $$ BEGIN
+ IF to_regclass('c_posts.read_feed_scope_versions') IS NOT NULL THEN
+  REVOKE ALL ON c_posts.read_feed_scope_versions,c_posts.read_feed_post_versions
+   FROM PUBLIC,hnuhole_c_runtime,hnuhole_c_recovery,hnuhole_business;
+  GRANT SELECT ON c_posts.read_feed_scope_versions,c_posts.read_feed_post_versions TO hnuhole_c_runtime;
+  REVOKE ALL ON FUNCTION c_posts.advance_feed_read_versions()
+   FROM PUBLIC,hnuhole_c_runtime,hnuhole_c_recovery,hnuhole_business;
+ END IF;
+END $$;

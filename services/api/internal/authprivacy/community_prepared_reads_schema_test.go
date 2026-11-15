@@ -64,6 +64,7 @@ func TestCommentPreparedVersionFactsPostgres(t *testing.T) {
 	}
 	// Seed a pre-0040 image of this same owned database, then apply the real
 	// migration Up again to prove upgrade backfill, including historical likes.
+	removePreparedFeedReadFixture(t, l)
 	mustExec(t, l.cp, `DROP FUNCTION c_comments.advance_read_versions() CASCADE;
  DROP TABLE c_comments.read_scope_versions,c_comments.read_post_versions,c_comments.read_comment_versions,
  c_posts.read_identity_versions,c_posts.read_account_versions;

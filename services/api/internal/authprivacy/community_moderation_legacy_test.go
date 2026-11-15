@@ -213,6 +213,7 @@ func TestModerationLegacyRestrictionMinimalPrivilegesPostgres(t *testing.T) {
 
 func TestModerationLegacyRestrictionBefore0015Postgres(t *testing.T) {
 	l := newPostLab(t)
+	removePreparedFeedReadFixture(t, l)
 	mustExec(t, l.cp, `DROP SCHEMA c_moderation CASCADE`)
 	// Remove later prepared-read, tags and edit dependencies in this owned fixture.
 	mustExec(t, l.cp, `DROP TRIGGER prepared_read_post ON c_posts.posts;
