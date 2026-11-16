@@ -63,7 +63,7 @@ func TestNotificationInboxGooseMigrationPostgres(t *testing.T) {
 			}
 			if mode == "upgrade" {
 				// One historical like record with two live events must be
-				// backfilled to the newest event version by 0045.
+				// backfilled to the newest event version by 0049.
 				mustExec(t, pool, `INSERT INTO c_auth.accounts(account_id,platform_number,username,password_hash,password_salt,password_params_version) VALUES('d2c920f5-5563-452d-901c-be133844b0fb','001830','notice_liker',decode(repeat('11',32),'hex'),decode(repeat('22',16),'hex'),1),('d2c920f5-5563-452d-901c-be133844b0fc','001831','notice_liker_two',decode(repeat('11',32),'hex'),decode(repeat('22',16),'hex'),1);
 INSERT INTO public.identity_account_state VALUES('d2c920f5-5563-452d-901c-be133844b0fa',1,now());
 INSERT INTO public.community_identities(identity_id,account_id,nickname,avatar,is_original,created_at) VALUES('11111111-1111-4111-8111-111111111111','d2c920f5-5563-452d-901c-be133844b0fa','notice owner','default-v1',true,now());
@@ -94,7 +94,7 @@ INSERT INTO c_inbox.like_events VALUES('33333333-3333-4333-8333-333333333333','d
 			if e = run("down"); e == nil {
 				t.Fatal("recipient facts rolled back")
 			}
-			if count(t, pool, `SELECT max(version_id) FROM public.goose_db_version WHERE is_applied`) != 45 {
+			if count(t, pool, `SELECT max(version_id) FROM public.goose_db_version WHERE is_applied`) != 49 {
 				t.Fatal("failed down changed ledger")
 			}
 		})

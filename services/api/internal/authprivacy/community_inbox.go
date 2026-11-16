@@ -112,7 +112,7 @@ func inboxIdentity(ctx context.Context, tx pgx.Tx, account uuid.UUID, identity s
 
 // The recipient identity filters interactions only. Every system notice belongs
 // to this authenticated account and is shared across its own identity selections.
-// latest_like_version is the newest live like event (maintained by 0045), so the
+// latest_like_version is the newest live like event (maintained by 0049), so the
 // unread predicate is row-local instead of one event probe per notification.
 const inboxListRows = `WITH inbox AS (
  SELECT 'i_'||n.notification_id::text AS id,n.updated_at AS at,
