@@ -8,7 +8,9 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"reflect"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -20,6 +22,16 @@ import (
 func TestRealHTTPSFeedBatchPerformancePostgres(t *testing.T) {
 	if os.Getenv("REQ002_PERFORMANCE") != "1" {
 		t.Skip("explicit frozen performance run required")
+	}
+	// This exact measurement file also compiles in the frozen pre-REQ002
+	// checkout. Never compare both modes against an already optimized Gate.
+	mode := os.Getenv("REQ002_PERFORMANCE_MODE")
+	if mode != "legacy" && mode != "batch" {
+		t.Fatal("explicit legacy/batch mode and separate frozen checkout required")
+	}
+	round, e := strconv.Atoi(os.Getenv("REQ002_PERFORMANCE_ROUND"))
+	if e != nil || round < 1 || round > 3 {
+		t.Fatal("explicit round 1..3 required")
 	}
 	output := os.Getenv("REQ002_PERFORMANCE_OUTPUT")
 	if output == "" {
@@ -41,7 +53,7 @@ func TestRealHTTPSFeedBatchPerformancePostgres(t *testing.T) {
 		Cohorts                 []cohort
 		Complete                bool
 		Threshold               float64
-	}{Source: os.Getenv("REQ002_SOURCE"), Warmup: 10, Samples: 80, Rounds: 3, Threshold: .40}
+	}{Source: os.Getenv("REQ002_SOURCE"), Warmup: 10, Samples: 80, Rounds: 1, Threshold: .40}
 	defer func() {
 		data, e := json.MarshalIndent(report, "", "  ")
 		if e != nil {
@@ -65,16 +77,17 @@ func TestRealHTTPSFeedBatchPerformancePostgres(t *testing.T) {
 	}
 	cfg := s.postConfig
 	cfg.PreparedFeedReads = true
-	cfg.LegacyListReads = true
-	legacy, e := s.c.WithPosts(context.Background(), cfg)
+	legacyFlag := reflect.ValueOf(&cfg).Elem().FieldByName("LegacyListReads")
+	if legacyFlag.IsValid() {
+		legacyFlag.SetBool(mode == "legacy")
+	} else if mode != "legacy" {
+		t.Fatal("batch mode unavailable in frozen baseline")
+	}
+	selected, e := s.c.WithPosts(context.Background(), cfg)
 	if e != nil {
 		t.Fatal(e)
 	}
-	cfg.LegacyListReads = false
-	batch, e := s.c.WithPosts(context.Background(), cfg)
-	if e != nil {
-		t.Fatal(e)
-	}
+	*s.c = *selected
 	first20 := postHTTPSJSON(t, s, "GET", "/api/v1/feed?limit=20", reader, "", nil, 200)
 	first5 := postHTTPSJSON(t, s, "GET", "/api/v1/feed?limit=5", reader, "", nil, 200)
 	routes := []struct {
@@ -84,71 +97,44 @@ func TestRealHTTPSFeedBatchPerformancePostgres(t *testing.T) {
 		{"home20", "/api/v1/feed?limit=20", 20}, {"next20", "/api/v1/feed?limit=20&cursor=" + first20["nextCursor"].(string), 20},
 		{"home10", "/api/v1/feed?limit=10", 10}, {"next5", "/api/v1/feed?limit=5&cursor=" + first5["nextCursor"].(string), 5},
 	}
-	for round := 0; round < report.Rounds; round++ {
-		for _, route := range routes {
-			for turn := 0; turn < 2; turn++ {
-				mode := "legacy"
-				selected := legacy
-				if (turn+round)%2 == 1 {
-					mode = "batch"
-					selected = batch
-				}
-				*s.c = *selected
-				report.Cohorts = append(report.Cohorts, cohort{Round: round + 1, Kind: route.kind, Mode: mode, Samples: []float64{}})
-				c := &report.Cohorts[len(report.Cohorts)-1]
-				for n := 0; n < report.Warmup+report.Samples; n++ {
-					req, e := http.NewRequest(http.MethodGet, s.cPublic.URL+route.path, nil)
-					if e != nil {
-						t.Fatal(e)
-					}
-					req.Header.Set("Authorization", "Bearer "+reader)
-					req.Header.Set("X-Post-Preview", "thumbnail-v1")
-					started := time.Now()
-					resp, e := s.client.Do(req)
-					if e != nil {
-						c.Errors = append(c.Errors, "transport")
-						t.Fatal("measurement transport failed")
-					}
-					data, e := io.ReadAll(io.LimitReader(resp.Body, 262144))
-					resp.Body.Close()
-					elapsed := float64(time.Since(started)) / float64(time.Millisecond)
-					if e != nil || resp.StatusCode != 200 {
-						c.Errors = append(c.Errors, fmt.Sprintf("HTTP_%d", resp.StatusCode))
-						t.Fatalf("measurement %s %s status %d", route.kind, mode, resp.StatusCode)
-					}
-					var page posts.CrossChannelFeedPage
-					if json.Unmarshal(data, &page) != nil || len(page.Items) != route.size {
-						c.Errors = append(c.Errors, "incomplete_page")
-						t.Fatal("incomplete measured page")
-					}
-					if n >= report.Warmup {
-						c.Samples = append(c.Samples, elapsed)
-					}
-				}
-				sorted := append([]float64{}, c.Samples...)
-				sort.Float64s(sorted)
-				c.P95 = sorted[int(math.Ceil(.95*float64(len(sorted))))-1]
+	for _, route := range routes {
+		report.Cohorts = append(report.Cohorts, cohort{Round: round, Kind: route.kind, Mode: mode, Samples: []float64{}})
+		c := &report.Cohorts[len(report.Cohorts)-1]
+		for n := 0; n < report.Warmup+report.Samples; n++ {
+			req, e := http.NewRequest(http.MethodGet, s.cPublic.URL+route.path, nil)
+			if e != nil {
+				t.Fatal(e)
+			}
+			req.Header.Set("Authorization", "Bearer "+reader)
+			req.Header.Set("X-Post-Preview", "thumbnail-v1")
+			started := time.Now()
+			resp, e := s.client.Do(req)
+			if e != nil {
+				c.Errors = append(c.Errors, "transport")
+				t.Fatal("measurement transport failed")
+			}
+			data, e := io.ReadAll(io.LimitReader(resp.Body, 262144))
+			resp.Body.Close()
+			elapsed := float64(time.Since(started)) / float64(time.Millisecond)
+			if e != nil || resp.StatusCode != 200 {
+				c.Errors = append(c.Errors, fmt.Sprintf("HTTP_%d", resp.StatusCode))
+				t.Fatalf("measurement %s %s status %d", route.kind, mode, resp.StatusCode)
+			}
+			var page posts.CrossChannelFeedPage
+			if json.Unmarshal(data, &page) != nil || len(page.Items) != route.size {
+				c.Errors = append(c.Errors, "incomplete_page")
+				t.Fatal("incomplete measured page")
+			}
+			if n >= report.Warmup {
+				c.Samples = append(c.Samples, elapsed)
 			}
 		}
+		sorted := append([]float64{}, c.Samples...)
+		sort.Float64s(sorted)
+		c.P95 = sorted[int(math.Ceil(.95*float64(len(sorted))))-1]
 	}
 	report.Complete = true
-	for round := 1; round <= report.Rounds; round++ {
-		for _, route := range routes {
-			var old, new float64
-			for _, c := range report.Cohorts {
-				if c.Round == round && c.Kind == route.kind {
-					if c.Mode == "legacy" {
-						old = c.P95
-					} else {
-						new = c.P95
-					}
-				}
-			}
-			gain := 1 - new/old
-			t.Logf("round%d %s old p95=%.3fms new=%.3fms improvement=%.2f%%", round, route.kind, old, new, gain*100)
-			if gain < report.Threshold {
-				t.Errorf("40%% hard threshold FAIL round%d %s", round, route.kind)
-			}
-		}
+	for _, c := range report.Cohorts {
+		t.Logf("round%d %s %s p95=%.3fms (cross-checkout hard gate runs in compare-feed-performance.py)", c.Round, c.Kind, c.Mode, c.P95)
 	}
 }

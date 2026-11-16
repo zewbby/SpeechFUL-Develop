@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -132,7 +133,7 @@ func (s *FileAuthorizationAnchorStore) withLocked(fn func(*authorizationAnchor, 
 }
 
 func (s *FileAuthorizationAnchorStore) readLocked() (authorizationAnchor, bool, error) {
-	raw, err := readAuthorizationFile(s.Path, 8192)
+	raw, err := readAuthorizationCheckpoint(s.Path)
 	if errors.Is(err, os.ErrNotExist) {
 		return authorizationAnchor{}, false, nil
 	}
@@ -176,7 +177,125 @@ func (s *FileAuthorizationAnchorStore) writeLocked(a authorizationAnchor) error 
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(s.Path, raw)
+	return writeAuthorizationCheckpoint(s.Path, raw)
+}
+
+// A checkpoint journal publishes exactly one signed, fixed-size record while
+// holding the same cross-process anchor lock as readers. Each append is fsynced
+// before returning to CommitAuthorized; SQL cannot commit before that point.
+// Only creation, legacy-format upgrade and bounded compaction replace a directory
+// entry and therefore need the original file-fsync/rename/directory-fsync path.
+// The last record is authoritative: a partial or damaged tail is never skipped.
+// Older binaries reject this format rather than accepting an older checkpoint.
+const authorizationCheckpointMagic = "HNUHOLE-AUTH-CHECKPOINT-V1\n"
+const authorizationCheckpointRecordSize = 16 * 1024
+const authorizationCheckpointMaxRecords = 128
+const authorizationCheckpointJSONLimit = 8192
+
+func readAuthorizationCheckpoint(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("invalid independent anchor file")
+	}
+	header := make([]byte, len(authorizationCheckpointMagic))
+	n, err := f.ReadAt(header, 0)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if n != len(header) || string(header) != authorizationCheckpointMagic {
+		// Existing signed JSON checkpoints remain readable. An unknown journal
+		// header is not interpreted as an older journal or a previous record.
+		if info.Size() > authorizationCheckpointJSONLimit {
+			return nil, errors.New("authorization evidence file too large")
+		}
+		raw := make([]byte, info.Size())
+		_, err := f.ReadAt(raw, 0)
+		return raw, err
+	}
+	length := info.Size() - int64(len(header))
+	if length <= 0 || length%authorizationCheckpointRecordSize != 0 || length > authorizationCheckpointRecordSize*authorizationCheckpointMaxRecords {
+		return nil, errors.New("invalid independent anchor journal length")
+	}
+	record := make([]byte, authorizationCheckpointRecordSize)
+	if _, err = f.ReadAt(record, info.Size()-authorizationCheckpointRecordSize); err != nil {
+		return nil, err
+	}
+	size := int(binary.BigEndian.Uint32(record[:4]))
+	if size <= 0 || size > authorizationCheckpointJSONLimit {
+		return nil, errors.New("invalid independent anchor journal record")
+	}
+	for _, value := range record[4+size:] {
+		if value != 0 {
+			return nil, errors.New("invalid independent anchor journal padding")
+		}
+	}
+	return record[4 : 4+size], nil
+}
+
+func writeAuthorizationCheckpoint(path string, raw []byte) error {
+	if len(raw) == 0 || len(raw) > authorizationCheckpointJSONLimit {
+		return errors.New("invalid independent anchor size")
+	}
+	record := make([]byte, authorizationCheckpointRecordSize)
+	binary.BigEndian.PutUint32(record[:4], uint32(len(raw)))
+	copy(record[4:], raw)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0)
+	if errors.Is(err, os.ErrNotExist) {
+		return writeFileAtomic(path, append([]byte(authorizationCheckpointMagic), record...))
+	}
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	header := make([]byte, len(authorizationCheckpointMagic))
+	_, readErr := f.ReadAt(header, 0)
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return readErr
+	}
+	if string(header) != authorizationCheckpointMagic {
+		// withLocked has already verified the entire legacy signed JSON.
+		return writeFileAtomic(path, append([]byte(authorizationCheckpointMagic), record...))
+	}
+	length := info.Size() - int64(len(header))
+	if length <= 0 || length%authorizationCheckpointRecordSize != 0 || length > authorizationCheckpointRecordSize*authorizationCheckpointMaxRecords {
+		return errors.New("invalid independent anchor journal length")
+	}
+	if length == authorizationCheckpointRecordSize*authorizationCheckpointMaxRecords {
+		return writeFileAtomic(path, append([]byte(authorizationCheckpointMagic), record...))
+	}
+	return appendAuthorizationCheckpoint(f, record)
+}
+
+type authorizationCheckpointAppender interface {
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+}
+
+func appendAuthorizationCheckpoint(f authorizationCheckpointAppender, record []byte) error {
+	n, err := f.Write(record)
+	if err == nil && n != len(record) {
+		err = io.ErrShortWrite
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 func writeFileAtomic(path string, raw []byte) error {
