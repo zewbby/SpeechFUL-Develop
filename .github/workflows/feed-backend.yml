@@ -17,7 +17,7 @@ concurrency:
 jobs:
   feed-postgres:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -80,6 +80,17 @@ jobs:
           ref: 1d829b2623a6c32830ee1b74fae6c99a436ad3b3
           path: .req002-frozen-baseline
           persist-credentials: false
+      - name: Same-request HTTPS stage diagnostic (not acceptance)
+        env:
+          PGPORT: '55440'
+          FEED_TEST_RACE: '0'
+          FEED_TEST_PATTERN: '^TestRealHTTPSFeedTimingDiagnosticPostgres$'
+        run: |
+          export PATH="$(pg_config --bindir):$PATH"
+          export FEED_GOOSE="$(go env GOPATH)/bin/goose"
+          export REQ002_SOURCE="$(git rev-parse HEAD)"
+          export REQ002_DIAGNOSTIC_OUTPUT="$RUNNER_TEMP/feed-request-timing.json"
+          sh services/api/authlab/run-feed-isolated.sh
       - name: Frozen feed batch HTTPS performance (40 percent hard gate)
         env:
           PGPORT: '55440'
@@ -99,4 +110,10 @@ jobs:
         with:
           name: feed-batch-performance
           path: ${{ runner.temp }}/feed-batch-performance/
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: feed-request-timing
+          path: ${{ runner.temp }}/feed-request-timing.json
           if-no-files-found: ignore

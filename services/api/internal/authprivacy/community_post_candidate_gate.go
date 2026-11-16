@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/readtiming"
 )
 
 // Private candidate preparation needs verified time but neither renews a
@@ -13,6 +14,7 @@ import (
 // transaction still uses CommitAuthorized. Unknown Gate implementations keep
 // their original Snapshot behavior and their own generation source.
 func (c *Community) postCandidateDecision(ctx context.Context, pool *pgxpool.Pool) (AuthorizationDecision, error) {
+	defer readtiming.Span(ctx, "candidate_authority")()
 	if gate, ok := c.gate.(*PostgresAuthorizationGate); !ok || gate.schema != "c_auth" {
 		return c.gate.Snapshot(ctx)
 	}

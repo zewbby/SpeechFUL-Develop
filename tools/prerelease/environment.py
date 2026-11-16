@@ -52,8 +52,10 @@ def checkpoint_rollback_incompatible(candidate, rollback):
         path = source / storage
         if not path.is_file():
             return None
-        match = re.search(r'^const authorizationCheckpointMagic = ("(?:\\.|[^"\\])*")$',
-                          path.read_text(encoding='utf-8'), re.MULTILINE)
+        text = path.read_text(encoding='utf-8')
+        match = re.search(r'^const authorizationCheckpointWriteMagic = ("(?:\\.|[^"\\])*")$', text, re.MULTILINE)
+        if match is None:
+            match = re.search(r'^const authorizationCheckpointMagic = ("(?:\\.|[^"\\])*")$', text, re.MULTILINE)
         return match.group(1) if match else None
     current_format = container_format(candidate)
     return current_format is not None and current_format != container_format(rollback)

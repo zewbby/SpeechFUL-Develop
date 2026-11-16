@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/postmedia"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/posts"
+	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/readtiming"
 )
 
 // PostConfig 的三份用途密钥独立于认证材料；只在启动时装配。
@@ -123,6 +124,7 @@ func (c *Community) freezePostProtocol(ctx context.Context) error {
 // 启动只校验材料；全新空库可在FROZEN启动。首次合法访问在最终Gate事务
 // 固定两份永久密钥承诺，之后每次最终事务重新核对。丢失历史承诺只能冻结。
 func (c *Community) checkPostProtocolKeys(ctx context.Context, tx pgx.Tx) error {
+	defer readtiming.Span(ctx, "protocol_keys")()
 	var db interface {
 		QueryRow(context.Context, string, ...any) pgx.Row
 	} = c.pool

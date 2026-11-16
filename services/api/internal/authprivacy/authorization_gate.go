@@ -376,7 +376,7 @@ func (g *PostgresAuthorizationGate) CommitAuthorized(ctx context.Context, tx pgx
 		if !offline {
 			updated.OfflineEvidence = nil
 		}
-		if err := g.observedAnchorWrite(ctx, updated); err != nil {
+		if err := g.observedBusinessAnchorWrite(ctx, updated); err != nil {
 			reason = "ANCHOR_WRITE_FAILURE"
 			return err
 		}

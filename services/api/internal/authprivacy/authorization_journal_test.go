@@ -31,7 +31,7 @@ func TestAuthorizationCheckpointAppendFailures(t *testing.T) {
 	for _, f := range []*checkpointFaultAppender{
 		{written: 3}, {written: 3, writeError: fault}, {written: 4, syncError: fault}, {written: 4, closeError: fault},
 	} {
-		if err := appendAuthorizationCheckpoint(f, []byte("test")); err == nil || !f.closed {
+		if err := publishAuthorizationCheckpointRecord(f, []byte("test")); err == nil || !f.closed {
 			t.Fatal("checkpoint failure acknowledged", f, err)
 		}
 		if f.written != 4 && f.synced {
@@ -53,7 +53,7 @@ func checkpointTestStore(t *testing.T) *FileAuthorizationAnchorStore {
 	return s
 }
 
-func TestAuthorizationCheckpointLegacyUpgradeAndCompaction(t *testing.T) {
+func TestAuthorizationCheckpointLegacyUpgradeAndAtomicPublication(t *testing.T) {
 	s := checkpointTestStore(t)
 	a := authorizationAnchor{Domain: "checkpoint-test", Generation: 1, Version: 1, Highwater: time.Now().UTC()}
 	message, _ := json.Marshal(a)
@@ -78,7 +78,7 @@ func TestAuthorizationCheckpointLegacyUpgradeAndCompaction(t *testing.T) {
 	}
 	if err := s.withLocked(func(current *authorizationAnchor, _ bool) error {
 		if !current.Highwater.Equal(a.Highwater) {
-			t.Fatal("compaction changed latest checkpoint")
+			t.Fatal("atomic publication changed latest checkpoint")
 		}
 		return nil
 	}); err != nil {
@@ -229,8 +229,19 @@ func TestAuthorizationCheckpointProcessesSerialize(t *testing.T) {
 // release and persist a freeze in that case.
 func TestAuthorizationCheckpointRecordTruncationFreezesPostgres(t *testing.T) {
 	c := newGateControl(t)
+	previous, err := readAuthorizationCheckpointSlots(c.gate.anchor.Path, c.gate.anchor.public)
+	if err != nil {
+		t.Fatal(err)
+	}
 	c.clock.set(c.clock.now().Add(time.Second))
 	if _, err := c.gate.Snapshot(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	current, err := readAuthorizationCheckpointSlots(c.gate.anchor.Path, c.gate.anchor.public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = writeFileAtomic(c.gate.anchor.Path, checkpointLegacyTestContainer(previous, current)); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(c.gate.anchor.Path)

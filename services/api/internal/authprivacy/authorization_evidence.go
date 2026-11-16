@@ -147,7 +147,7 @@ func (s *FileAuthorizationAnchorStore) withLocked(fn func(*authorizationAnchor, 
 }
 
 func (s *FileAuthorizationAnchorStore) readLocked() (authorizationAnchor, bool, error) {
-	raw, err := readAuthorizationCheckpoint(s.Path)
+	raw, err := readAuthorizationCheckpointSlots(s.Path, s.public)
 	if errors.Is(err, os.ErrNotExist) {
 		return authorizationAnchor{}, false, nil
 	}
@@ -182,6 +182,16 @@ func readAuthorizationFile(path string, max int64) ([]byte, error) {
 }
 
 func (s *FileAuthorizationAnchorStore) writeLocked(a authorizationAnchor) error {
+	return s.writeCheckpointLocked(a, false)
+}
+
+// Only a final business commit uses the fixed-slot fast publication path.
+// Snapshot, explicit freeze and recovery retain whole-file atomic publication.
+func (s *FileAuthorizationAnchorStore) writeBusinessLocked(a authorizationAnchor) error {
+	return s.writeCheckpointLocked(a, true)
+}
+
+func (s *FileAuthorizationAnchorStore) writeCheckpointLocked(a authorizationAnchor, business bool) error {
 	a.Highwater = a.Highwater.UTC()
 	message, err := json.Marshal(a)
 	if err != nil {
@@ -191,16 +201,15 @@ func (s *FileAuthorizationAnchorStore) writeLocked(a authorizationAnchor) error 
 	if err != nil {
 		return err
 	}
-	return writeAuthorizationCheckpoint(s.Path, raw)
+	return writeAuthorizationCheckpointSlots(s.Path, raw, s.signer, business)
 }
 
-// A checkpoint journal publishes exactly one signed, fixed-size record while
-// holding the same cross-process anchor lock as readers. Each append is fsynced
-// before returning to CommitAuthorized; SQL cannot commit before that point.
-// Only creation, legacy-format upgrade and bounded compaction replace a directory
-// entry and therefore need the original file-fsync/rename/directory-fsync path.
-// The last record is authoritative: a partial or damaged tail is never skipped.
-// Older binaries reject this format rather than accepting an older checkpoint.
+// Deployment preflight compares the writer format independently of the signed
+// Gate schema. V2 readers also accept legacy JSON and V1 append containers.
+const authorizationCheckpointWriteMagic = "HNUHOLE-AUTH-CHECKPOINT-V2\n"
+
+// The V1 reader is retained for one-time atomic upgrade. It never skips a bad
+// tail or chooses a previous record, including when the last record is damaged.
 const authorizationCheckpointMagic = "HNUHOLE-AUTH-CHECKPOINT-V1\n"
 const authorizationCheckpointRecordSize = 16 * 1024
 const authorizationCheckpointMaxRecords = 128
@@ -254,51 +263,13 @@ func readAuthorizationCheckpoint(path string) ([]byte, error) {
 	return record[4 : 4+size], nil
 }
 
-func writeAuthorizationCheckpoint(path string, raw []byte) error {
-	if len(raw) == 0 || len(raw) > authorizationCheckpointJSONLimit {
-		return errors.New("invalid independent anchor size")
-	}
-	record := make([]byte, authorizationCheckpointRecordSize)
-	binary.BigEndian.PutUint32(record[:4], uint32(len(raw)))
-	copy(record[4:], raw)
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0)
-	if errors.Is(err, os.ErrNotExist) {
-		return writeFileAtomic(path, append([]byte(authorizationCheckpointMagic), record...))
-	}
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	header := make([]byte, len(authorizationCheckpointMagic))
-	_, readErr := f.ReadAt(header, 0)
-	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		return readErr
-	}
-	if string(header) != authorizationCheckpointMagic {
-		// withLocked has already verified the entire legacy signed JSON.
-		return writeFileAtomic(path, append([]byte(authorizationCheckpointMagic), record...))
-	}
-	length := info.Size() - int64(len(header))
-	if length <= 0 || length%authorizationCheckpointRecordSize != 0 || length > authorizationCheckpointRecordSize*authorizationCheckpointMaxRecords {
-		return errors.New("invalid independent anchor journal length")
-	}
-	if length == authorizationCheckpointRecordSize*authorizationCheckpointMaxRecords {
-		return writeFileAtomic(path, append([]byte(authorizationCheckpointMagic), record...))
-	}
-	return appendAuthorizationCheckpoint(f, record)
-}
-
-type authorizationCheckpointAppender interface {
+type authorizationCheckpointWriter interface {
 	Write([]byte) (int, error)
 	Sync() error
 	Close() error
 }
 
-func appendAuthorizationCheckpoint(f authorizationCheckpointAppender, record []byte) error {
+func publishAuthorizationCheckpointRecord(f authorizationCheckpointWriter, record []byte) error {
 	n, err := f.Write(record)
 	if err == nil && n != len(record) {
 		err = io.ErrShortWrite

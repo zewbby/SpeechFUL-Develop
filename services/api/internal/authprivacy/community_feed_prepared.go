@@ -40,6 +40,7 @@ const feedReadVersionsSQL = `WITH channels AS (
  AND NOT EXISTS(SELECT 1 FROM accounts a LEFT JOIN c_posts.read_account_versions v USING(account_id) WHERE v.account_id IS NULL)`
 
 func (p *feedReadProof) read(ctx context.Context, tx pgx.Tx, a uuid.UUID) ([]byte, error) {
+	defer readtiming.Span(ctx, "list_proof")()
 	var proof []byte
 	var intact bool
 	e := tx.QueryRow(ctx, feedReadVersionsSQL, a, p.ids, nullablePostID(p.channel), p.initial).Scan(&proof, &intact)

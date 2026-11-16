@@ -1,11 +1,11 @@
 # REQ-002 — 六类列表批量读取与首页增量分页
 
 - 模式：常规；负责人／状态维护人：当前 Session。
-- 分支／Worktree：`codex/perf/home-feed-batch`；`D:/SpeechFUL/.worktrees/req-002-home-feed`；基线 `1d829b2623a6c32830ee1b74fae6c99a436ad3b3`（需求001已合入）；PR 未创建。
+- 分支／Worktree：`codex/perf/home-feed-batch`；`D:/SpeechFUL/.worktrees/req-002-home-feed`；冻结性能基线 `1d829b2623a6c32830ee1b74fae6c99a436ad3b3`（需求001已合入）；[草稿PR #11](https://github.com/zewbby/SpeechFUL-Develop/pull/11)。
 - 授权依据与边界：2026-11-16 用户明确要求“按这个计划开始实施，完成六类列表批量读取和首页 10/5/5 分页，再按三项硬门槛验收”，授权隔离实现、必要本地提交和验证；随后明确回复“授权本任务推送、草稿 PR 和 CI（推荐）”，覆盖本任务分支后续必要push、草稿PR及产品／性能CI。不修改正式数据；远端合并和正式发布仍未授权。
 - 需求确认：用户 Q1 选择六类共用列表一起优化；Q2 选择三项均作硬门槛；后续明确首屏10条、刷新新增5条、续页5条；Q4 选择最新5条先显示、后续刷新补齐中间帖子。刷新不足5条按实际数量，无新帖保留已有列表。六类为首页、频道、作者、我的帖子、点赞、收藏；10/5/5 适用于首页及频道筛选，其他列表原页大小保留。热榜和搜索不扩大范围。
 - 更新日期：2026-11-16。
-- 状态：2026-11-16用户明确授权04完成后通知02继续验收；04已释放设备及构建／压测资源，GPT-6.1 Sol XHigh 已恢复独立验证。列表及分页实现已完成；性能修复候选已完成并通过必要安全回归，独立验收进行中；原性能验收 FAIL／BLOCKED 保留（见下）；产品CI NOT_RUN；未合并；未发布。
+- 状态：列表及分页实现已完成，SQL硬门槛PASS。独立Linux CI确认追加式检查点候选的小页接口未达到40%，Astra Ultra按用户要求继续定位并修复；后续独立复测交回GPT-6.1 Sol XHigh。旧候选15类CI PASS、Feed backend性能Gate FAIL；新修复候选待对应head CI及手机25%验收。PR保持draft；未合并；未发布。
 
 ## 目标与范围
 
@@ -100,11 +100,33 @@
 
 主线兼容聚焦验证 PASS：`ultra-main-compatibility-01.log`，真实独立PG、`-race`，C/V只读检查点在UPDATE／COMMIT／连续中断后续行、业务快照回滚拒绝、错误前序及显式冻结拒绝、临时证据中断、旧检查点升级，以及本任务全部journal格式／故障／多实例／多进程／截断检查（authprivacy 87.709s）。预发布降级预检另补物理容器格式匹配，防止支持新签名字段但仍只读JSON的旧二进制接触当前anchor；聚焦工具回归4项PASS。当前性能和手机验收仍待完成。
 
+### 固定槽候选与独立CI缺口
+
+`2ea7327` 已推送并解决PR与最新main的冲突。[独立Linux Feed CI](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43810234588) 的被测合成提交为 `149bee23df7612fcaf65bf4ab50fcef2050aa475`，其tree与 `2ea7327` 完全一致（`1a3750c56b556eacda31bbd2b0bf7e9b4fa4f14f`）。16类workflow中15类PASS，唯一Feed backend在host、完整SQL及独立C/V全部PASS后，性能Gate FAIL。原始artifact `14199853798` 保存为 `ci-2ea-feed-performance.zip`，SHA256 `CE64C3350BD58358341B44A4E39E59E094567BDA08B32052456966653FF6C4CC`。
+
+- 42组均完整，3780个计时区间中3779个有效；唯一无效为batch第3轮next20的index85，RAW处在Go夹读内，但夹读不确定性0.142567ms超出原预算，和WSL持续钟速差不同。完整比较仍拒绝该轮，不移除无效样本。
+- 其余有效组仍明确不达标：实际旧续页5提升28.14%／30.05%／26.66%，刷新5提升24.67%／31.27%／29.82%；真实首屏10为45.99%／39.47%／43.14%。因此缺口不归咎于时钟，原FAIL继续保留。CI首页20改善56.14%／59.21%／59.01%不替代小页验收。
+- 本轮修复采用V2固定双槽，只有最终业务 `CommitAuthorized` 复用旧槽并执行 `fdatasync`；`Snapshot`／冻结／恢复明确保留完整文件原子替换。两槽元数据和完整内容均签名，任意坏槽拒绝，不回退授予旧权限；旧JSON/V1原子升级，部署预检识别V1/V2差异。协议及恢复限制见[Gate设计第18节](../design/auth-authorization-safety-gate.md#18-有界签名检查点存储)。已否决并撤销单槽原位覆盖草稿，避免毁掉唯一完整签名材料。
+- 同请求阶段观测新增候选授权、会话预检、资源证明和协议密钥检查；只在显式trace时记录固定标签，不记录业务内容。下一CI单独上传60请求的 `feed-request-timing` artifact，原正式三轮、所有页大小、原始样本、40%与计时守卫不变；job上限由20改30分钟，仅保证安全检查与性能检查均能完整执行。
+- `ultra-https-slots-01.json` 的60请求计时守卫均PASS；该次WSL阶段诊断的检查点写入约4.5～6.9ms、SQL提交4.6～7.4ms、准备约2.5ms。不能与不同时间段的旧诊断计算验收提升，也不能推断独立CI会达40%。
+
+初步存储及真实中断验证PASS：`ultra-slots-unit-01.log`（12.199s）及 `ultra-slots-crash-01.log`（真实PG、`-race`，25.267s）。覆盖固定分配复用、保留旧完整槽、签名序号／长度／填充／序列耗尽拒绝、旧格式升级；真实子进程写64字节后退出，C/V的Snapshot临时文件半写仍同代继续，业务半写保留旧材料但拒绝授权、回滚SQL并持久冻结，代次不自动推进。既有Recover不绕过坏槽，未新增损坏文件修复能力。上述为进程退出和故障注入，不能替代真实断电或生产存储验收。
+
+最终验证绑定 `2ea7327`＋本轮明确差异，`ultra-slots-source-final.json` 核对577个API／infra文件的LF SHA256与最终工作区一致；承载本段记录的提交包含同一产品实现。
+
+| 最终项目 | 结果与证据 |
+| --- | --- |
+| C/V、安全、列表完整聚焦 | PASS：`ultra-slots-security-01.log`，真实独立PG、`-race`；authprivacy 650.953s、真实HTTPS增量12新帖路径12.30s（HTTP包13.333s）。包含只读续行、取消、SQL失败、恢复／代次、旧快照、证据与break-glass、两槽／多进程／截断、六类SQL／九图／分页。Redis相关选择项按配置SKIP，不冒充覆盖 |
+| 最终追加测试与可关闭trace | PASS：`ultra-slots-final-focused.log`，真实PG、`-race`，38.440s。加强V1坏尾升级拒绝及完整记录截断；已有C token在Snapshot半写中断后继续可用，业务坏槽时session记录未撤销且代次不变；prepared时间线及单次最终检查点仍通过。完整安全回归后仅追加这些断言和可关闭观测，没有再改存储或授权逻辑 |
+| Host构建与静态检查 | PASS：`ultra-slots-final-host.log`，最终 `go test -mod=readonly ./...`、build、vet；无DSN项仅SKIP。首个 `ultra-slots-host-01.log` 保留FAIL：host wrapper残留仅供isolated runner使用的FEED_GOOSE，但没有迁移DSN，触发owned-fixture保护；清除该host环境残留后完整复验关闭，真实PG阶段未削减 |
+| 降级预检 | PASS：4项聚焦工具回归，覆盖有checkpoint_id但仅支持JSON、仅支持V1及支持V2的binary边界，读取live材料前拒绝不兼容降级 |
+| 正式接口与手机 | 新候选NOT_RUN，等待对应head独立CI／GPT-6.1 Sol XHigh；旧候选有效小页FAIL、所有raw／invalid保留，未改40%／25%硬门槛 |
+
 ## 阻碍与下一步
 
-此前按用户要求在其他任务使用资源时暂停；2026-11-16用户明确要求04完成后通知02继续，随后明确“换vivo了，继续吧”，现已恢复。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`与本轮契约一致。完整安全／SQL及HTTP回归、最新main本地集成兼容回归已完成；正式接口三轮因运行期时钟失稳保持待验，手机已在线待完成隔离测量。
+此前的暂停及无设备BLOCKED证据保留；用户明确恢复后，vivo已归本任务独占租约，当前手机25%及布局为NOT_RUN。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`与本轮契约一致。独立Linux CI已确认小页性能缺口，不能再将其仅标为WSL计时阻碍。
 
-1. 三项硬门槛目前仅SQL通过，接口性能FAIL、手机BLOCKED；任务未整体验收，不标记ready或发布。
-2. 继续只读诊断本机RAW／Go单调钟不一致；采用有效稳定时钟的完整冻结旧版本对照或独立Linux产品CI，保留所有无效／失败证据。候选未实测达标前不把旧FAIL关闭；真实 `paging=incremental-v1` 测量已纳入同一三轮Gate。
-3. 与当前设备任务错开固定设备／网络的手机时间线；保留原25%硬门槛及图片布局检查。
-4. 完成本地提交后，按用户授权边界处理本任务分支push／草稿PR和产品CI。合并、正式部署仍需明确授权。
+1. 三项硬门槛目前仅SQL通过；接口旧候选FAIL，新候选待对应head的完整冻结旧版本三轮独立复测；手机NOT_RUN。任务不标记ready或发布。
+2. 保留所有无效／失败样本和40%门槛，观察同一CI请求阶段定位剩余成本；不调低计时守卫或以页大小缩减代替同页性能。完整原始源码基线及真实 `paging=incremental-v1` 测量保持不变。
+3. Astra Ultra定位与修复完成后，交回GPT-6.1 Sol XHigh独立验收，包括固定设备／网络的25%和图片布局检查；继续隔离004等其他任务收益。
+4. 按已有授权推送本任务分支并跟进草稿PR和对应head产品CI。合并及正式部署仍未授权。
