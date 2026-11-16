@@ -3,9 +3,9 @@
 - 模式：常规；负责人／状态维护人：当前 Session。
 - 分支／Worktree／PR：`codex/feat/letter-to-students`；`E:/code_collection/java_code/SpeechFUL.git`；统一 PR [#8](https://github.com/zewbby/SpeechFUL-Develop/pull/8)，同时交付黑名单重做。实现基线为开发仓库 `zewbby/SpeechFUL-Develop` 的 `main@1d829b2`；该仓库当前为公开仓库。
 - 授权依据与边界：用户要求“新建分支，制作《致同学的一封信》，进行文案编写 & 弹窗实现，完成之后进行pr，第一步是写文案”，后续确认弹窗交互。覆盖本任务开发、验证、提交、推送及向当前开发仓库 `zewbby/SpeechFUL-Develop` 创建 PR；合并、发布未执行。2026-11-16 GitHub API 核对该仓库当前为公开，名称与现有 `develop` 远端一致。
-- 需求确认：以用户随后提供的全文为当前文案，保留措辞、段落与“SpeechFUL项目组”署名。用户确认每个账号首次登录新设备进入首页时自动展示；关闭按钮为“我已阅读”，位于正文最下方，必须滑动到底部后才能看到并使用。阅读状态按账号和本机安装实例保存；设置保留重读入口。无未决取舍。
-- 更新日期：2026-11-16。
-- 状态：实现 已完成；合并分支本机验证 PASS，统一 PR CI 以 #8 实时状态为准；合并 未合并；发布 未发布。
+- 需求确认：以用户随后提供的全文为当前文案，保留措辞、段落与“SpeechFUL项目组”署名。用户确认每个账号首次登录新设备进入首页时自动展示；关闭按钮为“我已阅读”，位于正文最下方，必须滑动到底部后才能看到并使用。阅读状态按账号和本机安装实例保存；设置保留重读入口。2026-11-17 用户明确“可以可以就按这样来写吧，就按这样来改动，然后PR”，确认 [信件与黑名单视觉参考](../../design/ui-drafts/letter-blacklist-reference-v1.html) 及本轮改版，不改变首次阅读、持久化、文案或接口语义。无未决取舍。
+- 更新日期：2026-11-17。
+- 状态：实现已完成（视觉改版 `710bc73`）；本机聚焦验证 PASS，统一 PR CI 以 #8 最新 head 为准；合并未合并；发布未发布。
 
 ## 目标与范围
 
@@ -56,6 +56,8 @@ SpeechFUL项目组
 | Flutter 关联验证 | 同基线＋本任务差异；Windows／Flutter 3.47.5／Dart 3.13.4 | PASS：72 项（信件、登录首页、设置、本地化、外观和私信运行时），另 39 项（信件及导航、身份、通知、个人页和社区翻译）；两组有重叠，不合计为独立项。`flutter analyze --no-pub` 无问题。 |
 | 协作验证 | 同基线＋本任务差异；`python -B -X utf8 -m unittest discover -s tools/tests -p test_collaboration.py -v`、`git diff --check` | PASS：协作回归 19 项；差异空白检查通过。 |
 | 真实渲染 | `apps/mobile/build/student-letter-render/` | PASS：375×812、320×640／2 倍字深色、812×375 横屏、768×1024 繁体及日文共 10 张首末状态。实际查看中文首末、小屏大字暗色末尾及英文横屏末尾；随包宋体子集解决系统字体回退黑块。按钮首次不可触达，到底后可见且高度 ≥48；减少动画已覆盖。 |
+| 视觉改版 | `710bc7357b5635032cce518701cbbf68d86a1e44`；Flutter 3.47.5；Windows | PASS：用户确认稿已落地为 90% 高度阅读卡、标题侧标／分隔线、阅读进度轨、右下滚动提示和深灰蓝确认按钮；确认前仍不可触达。重新生成并查看 10 张首末状态截图，中文按钮与图标字体正常，2 倍字滚动提示不再压住正文。 |
+| 视觉改版回归 | 同上；Windows／Flutter 3.47.5／Dart 3.13.4 | PASS：`flutter analyze --no-pub` 无问题；信件、黑名单、Feed、设置、本地化和读屏聚焦测试共 74 项通过；协作规则 19 项通过。 |
 | PR 产品 CI | PR #8 head `4067ae9db5635580ffbdc883d0011d368d210db4`；GitHub Actions | PASS：所有非跳过检查成功，`actual-process-acceptance` SKIPPED。包括 `flutter-and-android`、`flutter-and-real-feed`、`flutter-auth-regression`、`avatar-flutter`、`client`、`compile`、`candidate`、`rehearsal` 及服务端检查。 |
 | 黑名单合并交付 | 合并提交 `81971208d0eb7599a9d9851cd2c3ec098e038316`＋任务记录更新；Windows／Flutter 3.47.5 | PASS：`flutter analyze --no-pub` 无问题；信件、黑名单及 Feed UI 聚焦测试共 60 项通过。统一 PR #8 的最终 head CI 以 PR 实时状态为准。 |
 | Android bundle | 本机 `flutter build bundle --debug --no-pub`；PR #8 CI | BLOCKED（仅本机）：宿主缺少 Android SDK。PR 的 `flutter-and-android` 已 PASS，目标平台构建缺口已由 CI 覆盖。 |
