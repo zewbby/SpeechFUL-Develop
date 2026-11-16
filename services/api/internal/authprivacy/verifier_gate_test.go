@@ -548,7 +548,9 @@ func TestVerifierGateOfflineBreakGlassExpiresPostgres(t *testing.T) {
 		t.Fatalf("V break-glass failed without online provider: %+v %v", decision, err)
 	}
 	c.clock.set(c.clock.now().Add(authorizationEvidenceTTL + time.Nanosecond))
-	assertVerifierFrozen(t, c)
+	// Expired, valid offline evidence denies work until fresh online evidence
+	// arrives, without turning a temporary outage into another generation reset.
+	assertTemporaryEvidenceRecovers(t, c)
 	if count(t, c.lab.vp, `SELECT count(*) FROM v_auth.authorization_gate_audit WHERE operation_id='V-offline-recovery' AND mode='BREAK_GLASS'`) != 1 {
 		t.Fatal("V break-glass audit missing")
 	}
