@@ -54,8 +54,6 @@ INSERT INTO public.identity_change_receipts(account_id,change_key_digest,intent_
 			if e = run("up"); e != nil {
 				t.Fatal("0025 migration", e)
 			}
-			// 0043 is reserved by the in-flight DM directory task and 0044 by
-			// the comment read task; this branch installs 0045.
 			if version := count(t, pool, `SELECT max(version_id) FROM public.goose_db_version WHERE is_applied`); version != 45 {
 				t.Fatalf("migration chain incomplete: got %d, want 45", version)
 			}
