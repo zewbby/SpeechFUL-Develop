@@ -1,11 +1,11 @@
 # REQ-005 — 帖子搜索查询加速
 
 - 模式：常规；负责人／状态维护人：当前 Session。
-- 分支／Worktree／PR：`codex/perf/post-search-documents`；`D:/SpeechFUL/.worktrees/req-005-post-search`；PR 未创建。基线 `47bf7e9c3231e3e45e078280086d7fc45025f4d9`（2026-11-16 已 fetch 并核对 origin/main）。
+- 分支／Worktree／PR：`codex/perf/post-search-documents`；`D:/SpeechFUL/.worktrees/req-005-post-search`；[PR #13](https://github.com/zewbby/SpeechFUL-Develop/pull/13)。基线 `47bf7e9c3231e3e45e078280086d7fc45025f4d9`（2026-11-16 已 fetch 并核对 origin/main）。
 - 授权依据与边界：用户先要求 plan，随后确认性能硬门槛，再要求“拉分支开始做，视情况变化调整，不要死板一直按照计划”。授权本任务隔离实现、验证及必要本地提交；用户后续明确授权“推送分支并创建 PR，跑 CI，合并”；本次已授权推送／PR／CI／合并，未授权部署。需求附件的流程文字不另产生执行授权。
 - 需求确认：保留中文及 Unicode 字面子串、ICU lower、相关性与最新排序、频道分组、过滤、全局 search_content_revision／旧游标失效、最终 C Gate 重验和一次重试；优化候选查询及续页成本。用户结构化回复“采用硬门槛（推荐）”：固定10万篇及相同负载，选择性较高的≥3字搜索 p95 降低≥50%；1～2字和高命中词分别报告，p95 均不劣化超过10%。基线阶段冻结词集、首屏／续页场景及重复轮次。无未决产品取舍；根据证据调整技术细节。
 - 更新日期：2026-11-16。
-- 状态：实现 已完成；验证 本地 PASS／远程产品CI NOT_RUN（待验）；合并 未合并；发布 未发布。
+- 状态：实现 已完成；验证 PASS（本地及PR head `6e33ec4` 产品CI）；合并 已合并（`fed946b0d67dceb8ef9e27cd57310cf9ef9e7b40`）；发布 未发布。
 
 ## 目标与范围
 
@@ -56,7 +56,7 @@
 | API／搜索客户端 | Flutter／规范源码与基线一致；Linux Flutter3.47.5、原锁离线依赖；搜索／API两文件；当前Dart探针＋`ec2a626`服务端真实C HTTPS／SQL | PASS：13份OpenAPI、29受保护操作静态检查；搜索analyze无问题、65项Flutter测试；最终服务端版本的Dart探针完整搜索链路通过；`openapi.log`／`mobile.log`／`dart-ec2a626-pass.log` |
 | 邻接客户端扩大检查 | 同基线、Flutter及测试源码无差异；额外加入标签／编辑UI文件 | PASS：12项标签／编辑测试全过。原8项MediaComposerFixture超时定位为系统只有libsqlite3.so.0，测试原生资产要求libsqlite3.so；仅在任务私有lib目录建立别名并设置本次LD_LIBRARY_PATH，未改Flutter／夹具或系统库。`mobile-adjacent.log`；保留原失败日志 |
 | 性能硬门槛 | 同产品版本；固定口径v1；`POST_SEARCH_PERF=1 FEED_TEST_RACE=0 FEED_TEST_PATTERN='^TestFeedPostSearchDocumentsPerformancePostgres$' sh services/api/authlab/run-feed-isolated.sh` | PASS：36/36项、1440个测量样本；`performance-ec2a626-pass.log`与下述可移植JSON；四次quick均仅诊断，两个旧产品版本正式FAIL均保留 |
-| 远程产品CI／独立审查 | 未推送，未创建PR；性能workflow已添加 | NOT_RUN；本地检查不代表远程CI或独立成员批准 |
+| 远程产品CI／独立审查 | PR #13，head `6e33ec459b4c19e2ef3c91a99d9b84bbd3691fcb`；整合基线`bf5c0ae` | PASS：14/14 workflow；远程36/36搜索性能硬门槛通过。独立成员审查NOT_RUN，不将作者自检或CI当作成员批准 |
 
 聚焦SQL命令（先将Go／PostgreSQL加入PATH，并设置`FEED_GOOSE`为Goose3.22.1）：
 
@@ -93,10 +93,16 @@ GIN索引40,026,112字节（38.17MiB），读模型总计248,111,104字节（236
 
 ## 阻碍与下一步
 
-无产品取舍阻碍。本地产品实现、聚焦及扩大回归、最终版本Dart→真实HTTPS链路和正式性能硬门槛已完成。远程产品CI及独立审查NOT_RUN，整体保留待验；推送及PR获授权后执行送审，合并及部署另待明确授权。未进行设备／iOS／生产验收，本任务未改移动端产品代码，也未恢复历史延期项目。
+无产品取舍阻碍。本地产品实现、聚焦及扩大回归、最终版本Dart→真实HTTPS链路和正式性能硬门槛已完成。远程产品CI已PASS，用户明确授权的PR已合并；独立成员审查NOT_RUN，未绕过服务端保护或进行作者自批。部署未执行。未进行设备／iOS／生产验收，本任务未改移动端产品代码，也未恢复历史延期项目。
 
 运维顺序（尚未执行部署）：先保持 `posts.searchDocuments=false` 应用0049，使用迁移owner明确设置 `POST_SEARCH_BACKFILL_DSN` 执行 `sh services/api/authlab/backfill-post-search.sh 1000`；每批独立提交，断点在 `post_search_document_state.last_post_id`，失败可重跑。双向全量一致性校验、VACUUM／ANALYZE完成后才显式开启 `posts.searchDocuments=true`。回退仅关闭此开关，保留表和触发器持续维护；需要重新全量修复时owner先关开关，将ready置false、last_post_id复位，再回填并校验。运行时只有读权限，不能自行标记ready或执行维护函数；缺结构、索引、同步hook、源／维护函数完整性或ready时拒绝开启。
 
 ## 主线整合与送审
 
 2026-11-16：整合最新主线`bf5c0ae`（私信目录及评论优化已合入）。主线占用0047／0048，搜索迁移顺延为0049；三个迁移测试的最终账本统一49，保留搜索回填与schema检查。查询算法、触发器／维护函数正文及性能门槛未改，原`ec2a626`性能证据保留原版本范围；整合版本由PR CI重新验收。
+
+## PR及合并回执
+
+[PR #13](https://github.com/zewbby/SpeechFUL-Develop/pull/13)已按用户授权完成推送、CI和合并；合并提交`fed946b0d67dceb8ef9e27cd57310cf9ef9e7b40`。PR head `6e33ec459b4c19e2ef3c91a99d9b84bbd3691fcb`的14个workflow全部PASS（24个job：23 PASS，actual-process-acceptance按条件SKIP，无FAIL），包含[搜索10万篇性能](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43888223189)、[Feed真实SQL／迁移／权限／HTTPS](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43888222926)、[授权Gate](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43888222825)、[授权临界区固定对比](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43888222678)、Android、Feed UI、私信、评论、媒体、身份、限流及协作检查。完整CI结果见PR检查页，搜索原始JSON／日志保留为该性能run的artifact。
+
+当前整合版本远程性能再次36/36硬门槛PASS；本文件回执提交只更新任务记录，不修改产品或替代被测head。合并后未部署、未操作正式数据；部署仍需按0049回填顺序单独安排。回执保存于同一任务分支，不另建文档PR。
