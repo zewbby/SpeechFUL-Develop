@@ -6,7 +6,7 @@
 - 需求确认：用户已确认旧图片按首次访问生成，另提供手动限速／可停止回填；重复缩略请求 p95 至少下降60%、真实首页首屏可见图片全部显示时间至少下降30%，均为硬门槛。首屏测量固定设备、网络和内容，服务端已有缩略图、手机无缓存；首次生成耗时另测。新帖上限3图，历史4–9图只做兼容，不采用附件“九图首屏”。本次没有未决产品取舍。
 - 更新日期：2026-11-16。
 - 产品提交：`9754803f023193a5dfbbaad1a155f7f2f4236374`；下方本地证据绑定该提交的产品文件，后续仅任务记录／证据回执更新不改变被测实现。
-- 状态：本地实现已完成；本地功能／正式迁移／HTTPS性能分项PASS；辅助服务方法性能测量FAIL（环境计时无效）；产品CI NOT_RUN；设备30%指标BLOCKED；整体仍待验，未合并、未发布。
+- 状态：实现完成；`d0db7cd`、`8eb08b4` 各14项workflow全部PASS；服务端60%门槛PASS。手机首轮DEBUG首屏仅下降5.33%，FAIL；AOT分段测量及Astra XHigh原因修复进行中。整体未验收通过，未合并、未发布。
 
 ## 目标与范围
 
@@ -26,7 +26,7 @@
 - 真实一次性 PostgreSQL 验证约束、受限角色、删除竞态、容量预算与前向迁移；实际 HTTP 和最终提交失败／取消／ACK丢失回归。
 - 固定基线与负载验证服务端60%和设备首屏30%硬门槛；冷生成单列。缺真机／CI不报整体PASS。
 
-## 当前进度与证据
+## 初轮本地进度与证据（产品提交9754803）
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
@@ -43,7 +43,7 @@
 
 ## 阻碍与下一步
 
-本地成果可评审；下一步按本任务授权推送并创建草稿PR，核对适用产品CI；连接指定Android测试机后完成固定真实首页首屏30%硬门槛。辅助测量的本机时钟异常保留，后续性能CI在隔离Ubuntu运行，不修改共享WSL时钟。未获合并或正式发布授权。
+PR#7保持draft；当前阻碍为手机首屏30%未达标，继续定位并复验，不以CI或服务端性能代替。已连接vivo V2323A，产品CI已通过。辅助测量的本机时钟异常保留；云端同项已PASS，未修改共享WSL时钟。未获合并或正式发布授权。
 
 ## 2026-11-16 继续验收
 
@@ -53,3 +53,17 @@
 
 - 恢复复验进一步定位了PG16将等价AND括号扁平化的问题：仅byte_length三项AND的括号变化使整体CHECK指纹改变。现在严格接受已核对的fresh／restore两种完整指纹，不移除任何长度／摘要／尺寸约束；真实dump/restore＋canonical ACL＋受限runtime启动检查已PASS。第二轮恢复失败run43792697067保留，等待当前修复的CI。
 - 本机Linux NDK clang为空，native构建无产物；停止使用该工具链，改用现成Windows编译器。不恢复整套SDK、不改依赖锁或生产配置，手机指标尚未完成。
+
+
+## 手机性能定位（用户指定Astra XHigh）
+
+- `d0db7cd` 的14项workflow全部PASS，包含 [Post images](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43795625667)、[Android prerelease恢复演练及候选](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43795625872)。`8eb08b4` 仅调整手机测试TLS证书，其14项workflow也全部PASS。iOS项只证明构建，不声明iOS设备通过。
+- `d0db7cd` 云端实际HTTPS三组 p95：146.359/9.153ms、145.572/9.020ms、146.672/9.088ms，分别下降93.75%/93.80%/93.80%，60%硬门槛PASS；辅助服务方法三组均下降约95%，冷生成156.909ms。真实dump/restore完整性回归PASS。此前WSL时钟异常仍保留原FAIL，云端结果不是覆盖删除原结果。
+- 手机：vivo V2323A、Android15、现有1080×2400覆盖分辨率/480dpi，USB reverse固定本地网络；真实FeedScreen中一个合成帖子、一张1024×768 JPEG（630923bytes），不是九图。每路2轮预热＋6轮配对测量、交替次序；每轮清Flutter图片缓存并新建媒体仓库，服务端已有衍生图，真实Bearer/原生vault/TLS/C Gate。偶数样本取上中位数。
+- DEBUG首轮基线1626.712ms，复用1540.033ms，下降5.33%，FAIL；AOT profile首轮基线1530.038ms，复用1455.081ms，下降4.90%，FAIL。AOT帖子出现约489–636ms、图片清单返回约710–1113ms，JIT不是主要原因。原始样本分别 `E:/Hnuhole-env/req004-protected-thumbnails-20261116/evidence/device-debug-run1.json`、`device-profile-run1.json`；不放松30%门槛，不删除失败。
+- 用户随后明确要求“用Astra XHigh来找原因修复”，本次按该指令调用Astra（XHigh）定位，使用独立临时分支/Worktree `codex/perf/req004-metadata-noop` / `D:/SpeechFUL/.worktrees/req004-metadata-noop` 调查会话元数据的冗余原生持久化；主Session负责手机、测量和集成，权威记录仍为本文件。
+- 测试fixture改用仓库已有mobileLabCertificate并按现有设备fixture每分钟签发真实时间的fresh安全证据，不修改系统时钟、不跳过Gate。此前fixture空等构建导致证据5分钟过期返回503，属于未进入测量，不计首屏样本。AOT采用显式隔离包的profile构建，run-as只传输其私有合成凭据；未覆盖publictrial。
+
+- Astra第一处修复：仅会话元数据调用选择`skipUnchanged`；每次在AuthStore串行队列内仍完整原生读取/解析，只有待写JSON与本次原始记录字节完全相同才省去重复write/readback。真实期限变化仍原子写盘＋回读，普通写入、空记录、非规范记录不跳。新增撤销/换账号、损坏/读失败、真实写/回读失败、异步authority失效、较旧响应及普通写边界测试。
+- 该修复AOT同客户端两路配对结果：基线1020.577ms、复用851.051ms，下降16.61%，仍FAIL；每路每轮原生读取6次、写入0次，读取合计约116–202ms。原始`device-profile-noop-run1.json`保留。整体首页虽明显改善，不能将旧客户端额外开销计入纯缩略复用收益；继续定位固定开销。
+- 聚焦安全回归首次35项PASS；扩展9套205项PASS/1项旧故障注入未触发（相同期限不再写盘），保留原日志。该fixture改为返回真实更晚期限，并保留/加强“写失败则无设备数据、清空会话缓存”断言，4项聚焦PASS；最终当前head CI仍需完整核对。

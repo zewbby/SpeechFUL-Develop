@@ -70,12 +70,19 @@ func serveThumbnailDeviceFixture(t *testing.T, s *e2eServices, v *postmedia.Proc
 	}
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
+	renew := time.NewTicker(time.Minute)
+	defer renew.Stop()
 	timer := time.NewTimer(30 * time.Minute)
 	defer timer.Stop()
 	for {
 		select {
 		case <-timer.C:
 			t.Fatal("device fixture timed out")
+		case <-renew.C:
+			// Publish freshly signed evidence at real time, as in the existing
+			// mobile fixtures. No clock offset or Gate result is overridden.
+			s.advanceC(0)
+			s.advanceV(0)
 		case <-ticker.C:
 			if _, e = os.Stat(filepath.Join(root, "stop")); e == nil {
 				return

@@ -9,6 +9,32 @@ import 'package:integration_test/integration_test.dart';
 import 'package:hnuhole_mobile/hnuhole_mobile.dart';
 import 'package:hnuhole_mobile/src/design_system/telegram_theme.dart';
 
+class _MeasuredVault implements AuthVault {
+  final _delegate = FlutterAuthVault(namespace: 'req004.device.acceptance');
+  int reads = 0, writes = 0, readMicros = 0, writeMicros = 0;
+  @override
+  Future<String?> read() async {
+    final watch = Stopwatch()..start();
+    try {
+      return await _delegate.read();
+    } finally {
+      reads++;
+      readMicros += watch.elapsedMicroseconds;
+    }
+  }
+
+  @override
+  Future<void> write(String value) async {
+    final watch = Stopwatch()..start();
+    try {
+      await _delegate.write(value);
+    } finally {
+      writes++;
+      writeMicros += watch.elapsedMicroseconds;
+    }
+  }
+}
+
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('real homepage visible thumbnails paired device performance', (
@@ -31,9 +57,8 @@ void main() {
       verifierBaseUri: v,
       client: secure(),
     );
-    final store = AuthStore(
-      FlutterAuthVault(namespace: 'req004.device.acceptance'),
-    );
+    final vault = _MeasuredVault();
+    final store = AuthStore(vault);
     final token = data['token'] as String;
     final current = await auth.currentSession(token);
     await store.update(
@@ -78,7 +103,16 @@ void main() {
           mediaApi: api,
         );
         final media = PostMediaRepository(posts, maxIdleEntries: 0);
+        final readsBefore = vault.reads, writesBefore = vault.writes;
+        final readMicrosBefore = vault.readMicros,
+            writeMicrosBefore = vault.writeMicros;
         final watch = Stopwatch()..start();
+        int? feedReadyMicros, manifestReadyMicros;
+        posts.addListener(() {
+          if (posts.timelineItems.isNotEmpty) {
+            feedReadyMicros ??= watch.elapsedMicroseconds;
+          }
+        });
         await tester.pumpWidget(
           MaterialApp(
             theme: HhTelegramTheme.create(Brightness.light),
@@ -87,7 +121,11 @@ void main() {
               channels: directory.channels,
               onManageIdentities: () async {},
               onAuthenticationRequired: () => fail('session lost'),
-              loadImages: media.load,
+              loadImages: (postId) async {
+                final group = await media.load(postId);
+                manifestReadyMicros ??= watch.elapsedMicroseconds;
+                return group;
+              },
             ),
           ),
         );
@@ -130,6 +168,12 @@ void main() {
             'round': round - 1,
             'reuse': reuse,
             'microseconds': watch.elapsedMicroseconds,
+            'feedReadyMicros': feedReadyMicros ?? -1,
+            'manifestReadyMicros': manifestReadyMicros ?? -1,
+            'vaultReads': vault.reads - readsBefore,
+            'vaultWrites': vault.writes - writesBefore,
+            'vaultReadMicros': vault.readMicros - readMicrosBefore,
+            'vaultWriteMicros': vault.writeMicros - writeMicrosBefore,
           });
         }
         await tester.pumpWidget(const SizedBox.shrink());
