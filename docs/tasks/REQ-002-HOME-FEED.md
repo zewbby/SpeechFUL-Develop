@@ -5,7 +5,7 @@
 - 授权依据与边界：2026-11-16 用户明确要求“按这个计划开始实施，完成六类列表批量读取和首页 10/5/5 分页，再按三项硬门槛验收”，授权隔离实现、必要本地提交和验证；随后明确回复“授权本任务推送、草稿 PR 和 CI（推荐）”，覆盖本任务分支后续必要push、草稿PR及产品／性能CI。不修改正式数据；远端合并和正式发布仍未授权。
 - 需求确认：用户 Q1 选择六类共用列表一起优化；Q2 选择三项均作硬门槛；后续明确首屏10条、刷新新增5条、续页5条；Q4 选择最新5条先显示、后续刷新补齐中间帖子。刷新不足5条按实际数量，无新帖保留已有列表。六类为首页、频道、作者、我的帖子、点赞、收藏；10/5/5 适用于首页及频道筛选，其他列表原页大小保留。热榜和搜索不扩大范围。
 - 更新日期：2026-11-16。
-- 状态：实现完成；SQL及接口p95≥40%两项硬门槛PASS。被测合成提交 `56531e79a6b51154296f2b0545b5181dd7792822` 与本地集成 `a01ae5e4a413b59b2ce998f964403659151c92b6` 的tree均为 `908d73fbfad52be350c08d78ca37055cdc8b956b`；42组／3780计时全有效、21/21比较PASS，17类产品／协作workflow全部PASS（适用SKIP保留）。手机25%与布局NOT_RUN，设备离线且旧租约过期；不能据软件结果关闭第三门槛。全部历史FAIL／invalid保留，旧5bf Tail原因未定。PR保持draft；未合并；未发布。
+- 状态：实现完成；SQL及接口p95≥40%两项硬门槛PASS。被测合成提交 `56531e79a6b51154296f2b0545b5181dd7792822` 与本地集成 `a01ae5e4a413b59b2ce998f964403659151c92b6` 的tree均为 `908d73fbfad52be350c08d78ca37055cdc8b956b`；42组／3780计时全有效、21/21比较PASS，该轮17类产品／协作workflow全部PASS（适用SKIP保留）。最新a3同产品CI为16PASS／Feed前置FAIL，正式性能被SKIP；确定性测试夹具修复已本地PASS、待Sol独立复核与新head CI。手机25%与布局NOT_RUN，设备离线且旧租约过期；不能据软件结果关闭第三门槛。全部历史FAIL／invalid保留，旧5bf Tail原因未定。PR保持draft；未合并；未发布。
 
 ## 目标与范围
 
@@ -27,7 +27,7 @@
 
 ## 当前进度与证据
 
-冻结对照始终为完整 `1d829b2623a6c32830ee1b74fae6c99a436ad3b3`，没有把当前legacy开关当旧source。当前产品版本为 `f6cc4c3` 加正常主线合并 `a01ae5e`；后者与实际PASS的CI synthetic `56531e7` 完全同tree。下表代表当前结果；后续各历史段落的FAIL／NOT_RUN仅对应其当时版本，不覆盖当前结论。证据均保留在 [E验证目录](E:/Hnuhole-env/req002-home-feed-validation-20261116/) 及 [手机工具目录](E:/Hnuhole-env/req002-device-20261116/)。未连接正式数据库或操作用户原App。
+冻结对照始终为完整 `1d829b2623a6c32830ee1b74fae6c99a436ad3b3`，没有把当前legacy开关当旧source。当前产品版本为 `f6cc4c3` 加正常主线合并 `a01ae5e`；后者与实际PASS的CI synthetic `56531e7` 完全同tree；a3只更新文档，本轮只改受控注册测试夹具和回归，生产文件零差异。下表分别保留已验产品结果与最新CI阻断；后续各历史段落的FAIL／NOT_RUN仅对应其当时版本，不覆盖当前结论。证据均保留在 [E验证目录](E:/Hnuhole-env/req002-home-feed-validation-20261116/) 及 [手机工具目录](E:/Hnuhole-env/req002-device-20261116/)。未连接正式数据库或操作用户原App。
 
 | 当前项目 | 被测版本／范围 | 当前结果与证据 |
 | --- | --- | --- |
@@ -36,7 +36,7 @@
 | SQL硬门槛 | 实际native无图20／50、有图／编辑／清空及六类对照 | PASS：无图3条主体＋1最终counts＝4；有图4＋1＝5，均≤6，50条固定。准备／最终各1条fresh proof和固定authority另列；每请求1个最终checkpoint。阅读量计入主体总数，不按网络batch隐藏SQL |
 | 接口p95≥40%硬门槛 | 完整旧／新source，同61帖、同页大小／负载／环境，3轮、7路由、各10预热＋80正式 | PASS：42组／3780区间全有效、0 invalid、无错误，21/21≥40%；最低普通home10第3轮46.5097%。Sol从原zip逐条复算guard／raw p95／全部比较，`sol-f6-ci-independent-audit-02.json`；不删异常值、不选轮次 |
 | 实际10/5/5接口 | 三轮真实incremental协议；与上行同条数比较 | PASS：首页10提升60.7078／60.0833／58.4034%；旧续页5为49.5681／49.7526／50.0657%；刷新5为49.3357／52.2661／47.8146%。没有用20→10/5缩页收益代替同页40% |
-| 当前CI | [Feed43876403002](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43876403002)、[AuthGate43876403407](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43876403407)；按workflow_id去重latest | 17/17 completed/success。含host／OpenAPI／真实SQL／C/V与适用平台流水线；AuthGate authprivacy651.212s、HTTPS74.124s。适用SKIP原样保留，CI不替代手机或生产验收 |
+| 当前CI | [a3 Feed43880785956](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43880785956)，source `6362b06`／tree `3349bc7`精确等于a3 | 16PASS／1FAIL：Feed真实SQL前置在注册夹具跨半小时失败，后续C/V、stage、正式40%均SKIP；always诊断PASS不作验收。此前[完整17PASS轮43876403002](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43876403002)及21/21性能PASS保留；本轮test-only修复本地PASS，独立复核／新head CI待验 |
 | 手机软件与隔离工具 | 完整1d App；debc主线控制App；5bf r6候选App；同r5注入与工具链／defines | 离线PASS：profile/AOT、真实FeedScreen widget与decode探针、11个统计／布局反例。全部输入等价证据支持App复用，appSource与serverSource分列；不是单客户端切backend flag。1d／3746／ef及f6的fresh HOST TLS／publish12／protected WEBP smoke保留，均已停止；bf5／a01新server fixture开测前再准备 |
 | 手机p95≥25%与布局 | Xiaomi15 `63005867`，固定设备／网络、完整版本矩阵 | NOT_RUN：ADB／PnP为空，旧lease20:19过期，未装机／清用户App／采样。正式home／older／refresh各10预热＋80原始样本；真实native PostStore、vault／网络／layout／hit-test／callback；每次刷新实际新增12帖。独立受控decode场景逐帧检查card与image全局Rect、scroll offset和idle，无主动滚动／导航 |
 | 合并与发布 | 草稿PR#11 | 未合并、未部署；既有授权仅覆盖任务分支push／draft PR／CI。三硬门槛仍缺手机，不标ready或发布 |
@@ -220,11 +220,21 @@
 - 完整移动输入复核支持App5bf r6／server f6（728项）及Appdebc／server3746（727项）的精确复用，Git树／raw／r5注入／SDK与CLI flags证据在手机目录；新main bf5不改apps/packages，后续控制server须使用完整bf5、最终server使用完整a01，不把旧3746／f6 runtime说成新server。旧软件HOST smoke分别在全新私有PG真实发布12帖、验证CA／hostname／受保护169686-byte WEBP后正常停止；本轮f6为15.385s，不是手机数据。新手机测量矩阵保留完整1d→最终25%总收益硬门槛，最新main→最终净收益独立报告，不新增第二25%门槛，也不把004收益说成002净收益。
 - 当前全部17类workflow成功；AuthGate完整步骤PASS，适用SKIP不扩大为验收。手机仍无设备且旧lease失效，安装／native storage device／触发→交互25%／真实decode布局均NOT_RUN。所有本任务测试／HOST fixture／构建进程已停止，未触用户原App、正式数据或生产环境。
 
+## 2026-11-16 a3注册夹具跨窗口失败与确定性修复
+
+- [Feed CI43880785956](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43880785956)／job133345782327的source `6362b06c71cc830b91f9091b8d29e212b179b49b`、tree `3349bc7903962f29c33534dc81b8ac6f9fd92f9f`与a3精确一致；a3相对a01只有任务记录31+/6-，生产差异为零。`TestFeedViewsAccountDailyConcurrencyPostgres`在13:59:59.0027671Z开始，14:00:00.2199708Z于注册owner处返回`registration ticket not yet valid`，authprivacy aggregate FAIL182.678s；后续独立C/V、stage及正式性能SKIP，不是40%新FAIL。该轮最终16类PASS、仅Feed前置FAIL；always 630诊断PASS不能代替formal。
+- 原始脱敏窗口`ci-a3-registration-not-before-failure-excerpt.log` SHA256 `29586417D66688E8211886545D7CD68B668E4891CED52E962CEBF181356D8BCF`及source.json `63CA84FB47398310E39595180A7BAC59F0CD304F91FFCE9F4E16A20A45EAFC97`保留；唯一`ci-a3-feed-tail-diagnostic.zip`为`0A6DA57A92B0C58218BBB3C40D48F644CB47A1080D56D9ADE8C93CB0374248E5`，仅诊断。此前56531／908d的全套PASS及所有历史FAIL不改写。
+- 根因在测试夹具混用时钟：`newGateControl`冻结C决策时间，而`lab.ticket`仍查询真实PG `clock_timestamp()`，初始化跨半小时后签出的新window相对冻结C尚未开始。修复只让受控lab的出票绑定同一个`clock.now`；普通`newLab`保持真实PG时间。生产`ValidateAdmissionWindow`、未来／过期拒绝、安全Gate和时钟来源均未改；没有等待边界、改系统时钟、重试票据或放宽时间窗口。
+- `ultra-a3-registration-red-01.log`用原a3夹具＋新增回归得到预期aggregate FAIL8.966s：把受控C推进至与SQL相隔至少两个窗口，边界前1µs／准确边界／后1µs三例均因旧出票时间而expired。这证明旧混钟缺陷，**不是逐字复现CI的not-yet-valid**；另一真实C反例以有效签名的下一window票据在边界前1µs获得`ErrTicketNotYetValid`，与CI方向一致，过期票据仍为`ErrTicketExpired`，且无账号／intent创建、Gate代次不变。
+- 同一回归在修复后的完整C出票→CreateSignupIntent→CommitSignup→session授权路径通过三个边界点。`ultra-a3-registration-green-01.log`真实自有PG `-race`聚焦PASS43.236s，含原FeedViews并发用例PASS6.05s、过滤绑定、普通newLab登录／撤销、Gate恢复／最终冻结与续期／pending代次，以及未来和过期票据反证。未选择的HTTP等包为no tests to run，不扩写覆盖；未重采正式性能。
+- 初次host收尾脚本遗留`FEED_GOOSE`但无DSN，迁移测试正确拒绝“owned migration fixture required”，原`ultra-a3-registration-host-01.log` FAIL保留。清除夹具变量后`host-02.log`完整go test/build/vet/gofmt PASS；只重跑host，没有重跑已通过PG。fresh a3 archive的`ultra-a3-registration-source-green-01.json`逐项核对839项raw／明确UTF-8 shell LF／Git执行位与symlink，三个_test.go覆盖单列，生产文件不变；`source-red-tested-01.json`绑定实际gofmt后的RED输入。所有自有测试／PG进程已退出。
+- 本轮基线`a3f104dd136c3fdba8a7e7113a9f4d79695cf528`＋上述三份test-only差异的本地证据完整，交Sol独立复核后再推送并由入口Session跟进新head适用CI。手机25%／真实布局仍NOT_RUN，既有任务push／PR／CI授权持续，不沿用过期设备租约安装。
+
 ## 阻碍与下一步
 
-SQL与接口40%两项硬门槛已PASS，三项整体尚未完成。当前缺Xiaomi15（`63005867`）真实连接及本任务有效独占租约；旧租约20:19已过期，不能据旧授权安装。设备恢复时先由入口Session核对连接和归属／刷新租约，再启动独立`.req002`的smoke，用户原App不操作。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`未变。
+SQL与接口40%两项硬门槛已在56531／908d完整产品上PASS，三项整体尚未完成；最新a3前置失败的test-only修复尚待独立复核及新head CI。当前缺Xiaomi15（`63005867`）真实连接及本任务有效独占租约；旧租约20:19已过期，不能沿用过期租约安装。设备恢复时先由入口Session核对连接和归属／刷新租约，再启动独立`.req002`的smoke，用户原App不操作。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`未变。
 
 1. 在完整bf5控制server／完整a01最终server来源与App输入等价证据更新后，使用新owned smoke fixture验证安装、native存储及真实UI／decode链路；不得沿用已消费publish/0或已停止的旧runtime／凭据。正式每版本再建固定61帖的新fixture，与smoke分离。
 2. 同一设备／网络／合成发布序列，完整1d、最新主线控制、最终候选三版本，home／older／refresh各10预热＋80正式原始样本；每次刷新真实发布12帖。保持原25%及既定手机时钟保守界，不剔样；单独受控图片decode全局Rect／滚动idle证据完整后才能关闭布局门槛。
-3. 保留所有历史FAIL／invalid和Tail原因未定的结论；不为文档提交重采接口性能，不把17类CI／HOST smoke／APK构建代替手机结果。任务仍不标ready或发布。
+3. 先完成本轮注册夹具修复的Sol独立复核及新head CI，保留a3原前置FAIL／后续formal SKIP。保留所有历史FAIL／invalid和Tail原因未定的结论；不为文档提交重采接口性能，不把17类CI／HOST smoke／APK构建代替手机结果。任务仍不标ready或发布。
 4. 按已有授权推送本任务分支、由入口Session更新draft PR并跟进后续适用CI。远端合并和正式部署仍未授权。
