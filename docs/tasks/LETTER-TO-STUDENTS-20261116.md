@@ -56,7 +56,7 @@ SpeechFUL项目组
 | Flutter 关联验证 | 同基线＋本任务差异；Windows／Flutter 3.47.5／Dart 3.13.4 | PASS：72 项（信件、登录首页、设置、本地化、外观和私信运行时），另 39 项（信件及导航、身份、通知、个人页和社区翻译）；两组有重叠，不合计为独立项。`flutter analyze --no-pub` 无问题。 |
 | 协作验证 | 同基线＋本任务差异；`python -B -X utf8 -m unittest discover -s tools/tests -p test_collaboration.py -v`、`git diff --check` | PASS：协作回归 19 项；差异空白检查通过。 |
 | 真实渲染 | `apps/mobile/build/student-letter-render/` | PASS：375×812、320×640／2 倍字深色、812×375 横屏、768×1024 繁体及日文共 10 张首末状态。实际查看中文首末、小屏大字暗色末尾及英文横屏末尾；随包宋体子集解决系统字体回退黑块。按钮首次不可触达，到底后可见且高度 ≥48；减少动画已覆盖。 |
-| PR 产品 CI | PR #8 head `4067ae9db5635580ffbdc883d0011d368d210db4`；GitHub Actions | PASS：23 项有效检查成功，`actual-process-acceptance` SKIPPED。包括 `flutter-and-android`、`flutter-and-real-feed`、`flutter-auth-regression`、`avatar-flutter`、`client`、`compile`、`candidate`、`rehearsal` 及服务端检查。 |
+| PR 产品 CI | PR #8 head `4067ae9db5635580ffbdc883d0011d368d210db4`；GitHub Actions | PASS：所有非跳过检查成功，`actual-process-acceptance` SKIPPED。包括 `flutter-and-android`、`flutter-and-real-feed`、`flutter-auth-regression`、`avatar-flutter`、`client`、`compile`、`candidate`、`rehearsal` 及服务端检查。 |
 | Android bundle | 本机 `flutter build bundle --debug --no-pub`；PR #8 CI | BLOCKED（仅本机）：宿主缺少 Android SDK。PR 的 `flutter-and-android` 已 PASS，目标平台构建缺口已由 CI 覆盖。 |
 | 原生设备／生产 | 本轮宿主验证 | NOT_RUN；宿主存储替身不代证原生跨进程／真机／生产验收。 |
 
