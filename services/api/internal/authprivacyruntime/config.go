@@ -43,6 +43,7 @@ type PostsConfig struct {
 	CursorKeyFile      string `json:"cursorKeyFile"`
 	PreparedFeedReads  bool   `json:"preparedFeedReads,omitempty"`
 	PreparedMediaReads bool   `json:"preparedMediaReads,omitempty"`
+	SearchDocuments    bool   `json:"searchDocuments,omitempty"`
 }
 
 type CommentsConfig struct {
@@ -61,6 +62,7 @@ type PostImagesConfig struct {
 	PythonFile      string `json:"pythonFile"`
 	ValidatorFile   string `json:"validatorFile"`
 	ValidatorSHA256 string `json:"validatorSHA256"`
+	ThumbnailReuse  bool   `json:"thumbnailReuse,omitempty"`
 }
 
 type SharedRateConfig struct {
@@ -71,34 +73,35 @@ type SharedRateConfig struct {
 }
 
 type Config struct {
-	SharedRateLimit         *SharedRateConfig `json:"sharedRateLimit,omitempty"`
-	Environment             string            `json:"environment"`
-	DatabaseURL             string            `json:"databaseUrl"`
-	DatabasePasswordFile    string            `json:"databasePasswordFile"`
-	PublicListen            string            `json:"publicListen"`
-	InternalListen          string            `json:"internalListen"`
-	PublicOrigin            string            `json:"publicOrigin"`
-	PeerOrigin              string            `json:"peerOrigin"`
-	AllowedOrigins          []string          `json:"allowedOrigins"`
-	AllowDevelopmentNetwork bool              `json:"allowDevelopmentNetwork"`
-	CAFile                  string            `json:"caFile"`
-	PublicCertificateFile   string            `json:"publicCertificateFile"`
-	PublicKeyFile           string            `json:"publicKeyFile"`
-	InternalCertificateFile string            `json:"internalCertificateFile"`
-	InternalKeyFile         string            `json:"internalKeyFile"`
-	NetworkKeyFile          string            `json:"networkKeyFile"`
-	SigningKeyFile          string            `json:"signingKeyFile"`
-	TrustedCommunityKeyFile string            `json:"trustedCommunityKeyFile"`
-	TrustedVerifierKeyFile  string            `json:"trustedVerifierKeyFile"`
-	RequestKeyFile          string            `json:"requestKeyFile,omitempty"`
-	PasswordBlocklistFile   string            `json:"passwordBlocklistFile,omitempty"`
-	Gate                    *GateConfig       `json:"gate,omitempty"`
-	Posts                   *PostsConfig      `json:"posts,omitempty"`
-	Comments                *CommentsConfig   `json:"comments,omitempty"`
-	Rankings                *RankingsConfig   `json:"rankings,omitempty"`
-	DirectMessages          bool              `json:"directMessages,omitempty"`
-	Moderation              bool              `json:"moderation,omitempty"`
-	AdminDirectory          string            `json:"adminDirectory,omitempty"`
+	SharedRateLimit          *SharedRateConfig `json:"sharedRateLimit,omitempty"`
+	Environment              string            `json:"environment"`
+	DatabaseURL              string            `json:"databaseUrl"`
+	DatabasePasswordFile     string            `json:"databasePasswordFile"`
+	PublicListen             string            `json:"publicListen"`
+	InternalListen           string            `json:"internalListen"`
+	PublicOrigin             string            `json:"publicOrigin"`
+	PeerOrigin               string            `json:"peerOrigin"`
+	AllowedOrigins           []string          `json:"allowedOrigins"`
+	AllowDevelopmentNetwork  bool              `json:"allowDevelopmentNetwork"`
+	CAFile                   string            `json:"caFile"`
+	PublicCertificateFile    string            `json:"publicCertificateFile"`
+	PublicKeyFile            string            `json:"publicKeyFile"`
+	InternalCertificateFile  string            `json:"internalCertificateFile"`
+	InternalKeyFile          string            `json:"internalKeyFile"`
+	NetworkKeyFile           string            `json:"networkKeyFile"`
+	SigningKeyFile           string            `json:"signingKeyFile"`
+	TrustedCommunityKeyFile  string            `json:"trustedCommunityKeyFile"`
+	TrustedVerifierKeyFile   string            `json:"trustedVerifierKeyFile"`
+	RequestKeyFile           string            `json:"requestKeyFile,omitempty"`
+	PasswordBlocklistFile    string            `json:"passwordBlocklistFile,omitempty"`
+	Gate                     *GateConfig       `json:"gate,omitempty"`
+	Posts                    *PostsConfig      `json:"posts,omitempty"`
+	Comments                 *CommentsConfig   `json:"comments,omitempty"`
+	Rankings                 *RankingsConfig   `json:"rankings,omitempty"`
+	DirectMessages           bool              `json:"directMessages,omitempty"`
+	PreparedDMDirectoryReads bool              `json:"preparedDmDirectoryReads,omitempty"`
+	Moderation               bool              `json:"moderation,omitempty"`
+	AdminDirectory           string            `json:"adminDirectory,omitempty"`
 
 	PostImages *PostImagesConfig `json:"postImages,omitempty"`
 	// Exactly four public Gate purpose keys from the other party, in evidence,
@@ -201,6 +204,9 @@ func (c Config) Validate(service authprivacyhttp.Service) error {
 	if c.PostImages != nil {
 		if service != authprivacyhttp.CommunityService || c.Posts == nil || c.PostImages.PythonFile == "" || c.PostImages.ValidatorFile == "" || len(c.PostImages.ValidatorSHA256) != 64 {
 			return errors.New("postImages requires explicit C posts and pinned validator paths")
+		}
+		if c.PostImages.ThumbnailReuse && !c.Posts.PreparedMediaReads {
+			return errors.New("thumbnail reuse requires preparedMediaReads")
 		}
 	}
 	if c.Environment != "dev" || (service != authprivacyhttp.CommunityService && service != authprivacyhttp.VerifierService) {

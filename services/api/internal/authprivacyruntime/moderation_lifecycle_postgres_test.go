@@ -55,7 +55,7 @@ func moderationStartupLabThrough(t *testing.T, ceiling int64) (*pgxpool.Pool, *p
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err = tx.Exec(ctx, `DROP SCHEMA IF EXISTS c_inbox,c_rate_limit,c_dm,c_comments,c_moderation,c_posts,c_auth CASCADE;
 DROP TABLE IF EXISTS public.identity_avatar_assets, public.identity_change_receipts,public.community_identities,public.identity_account_state,public.sessions,public.channels,public.goose_db_version CASCADE;
 DROP FUNCTION IF EXISTS public.guard_identity_account_state(),public.guard_community_identity(),public.guard_identity_receipt(),public.check_identity_account_shape() CASCADE`); err != nil {
@@ -85,6 +85,19 @@ DROP FUNCTION IF EXISTS public.guard_identity_account_state(),public.guard_commu
 		sql, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if strings.Contains(string(sql), "-- +goose NO TRANSACTION") {
+			if err = tx.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = owner.Exec(ctx, strings.SplitN(string(sql), "-- +goose Down", 2)[0]); err != nil {
+				t.Fatalf("nontransactional migration %s: %v", filepath.Base(file), err)
+			}
+			tx, err = owner.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			continue
 		}
 		if _, err = tx.Exec(ctx, strings.SplitN(string(sql), "-- +goose Down", 2)[0]); err != nil {
 			t.Fatalf("formal migration %s: %v", filepath.Base(file), err)
@@ -176,7 +189,12 @@ func TestModerationLifecycleCommonCStartupWithoutFeaturesPostgres(t *testing.T) 
 		t.Fatal("common C startup accepted partially removed 0018")
 	}
 	// Remove later prepared-read, tags and edit dependencies in this owned fixture.
-	exec(t, `DROP TRIGGER prepared_feed_channel ON public.channels;
+	exec(t, `DROP TRIGGER post_search_document_post ON c_posts.posts;
+DROP TRIGGER post_search_document_content ON c_posts.attempt_contents;
+DROP FUNCTION c_posts.refresh_post_search_document(uuid),c_posts.sync_post_search_document(),
+ c_posts.backfill_post_search_documents(integer),c_posts.validate_post_search_documents(),c_posts.current_post_search_documents(uuid);
+DROP TABLE c_posts.post_search_documents,c_posts.post_search_document_state;
+DROP TRIGGER prepared_feed_channel ON public.channels;
 DROP TRIGGER prepared_feed_post ON c_posts.posts;
 DROP TRIGGER prepared_feed_content ON c_posts.attempt_contents;
 DROP TRIGGER prepared_feed_image ON c_posts.images;
