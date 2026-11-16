@@ -7,6 +7,10 @@ const thumbnailAccountingDigest = "f0788011c13ad2d0dd697bbefd7c1952cb6562a4ae743
 const thumbnailErasureDigest = "b5f7c447c0cac32a7c2fd5042ef3a6ef441c655d8e4a89aa0cfd1c9851613d72"
 const thumbnailConstraintsDigest = "1e1ba6bdabbbff2f08f757f27b01b95c12f1268e3ffaabed3b3d9357d4bcaa11"
 
+// PG16 dump/restore flattens (length BETWEEN low AND high) AND hash-length
+// into the same three-term AND. Both exact forms retain every predicate.
+const thumbnailRestoredConstraintsDigest = "12998d55742c4d862912bda691555543b538b6fccc260a0624d56f8ae9bf095d"
+
 func (c *Community) checkThumbnailStorageSchema(ctx context.Context, access bool) error {
 	var ok bool
 	err := c.pool.QueryRow(ctx, `SELECT
@@ -53,7 +57,7 @@ func (c *Community) checkThumbnailStorageSchema(ctx context.Context, access bool
  AND (SELECT count(*) FROM pg_constraint WHERE conrelid='c_posts.thumbnail_storage'::regclass AND contype='c' AND convalidated)=3
  AND (SELECT encode(sha256(convert_to(string_agg(r.relname||':'||k.conname||':'||pg_get_constraintdef(k.oid),E'\n' ORDER BY r.relname,k.conname),'UTF8')),'hex')
  FROM pg_constraint k JOIN pg_class r ON r.oid=k.conrelid
- WHERE k.conrelid IN ('c_posts.thumbnails'::regclass,'c_posts.thumbnail_storage'::regclass) AND k.contype='c')=$2
+ WHERE k.conrelid IN ('c_posts.thumbnails'::regclass,'c_posts.thumbnail_storage'::regclass) AND k.contype='c')=ANY($2::text[])
  AND EXISTS(SELECT 1 FROM c_posts.thumbnail_storage WHERE singleton_id=1 AND used_bytes>=0 AND used_bytes<=capacity_bytes)
  AND (SELECT used_bytes=(SELECT COALESCE(sum(byte_length),0) FROM c_posts.thumbnails) FROM c_posts.thumbnail_storage WHERE singleton_id=1)
  AND EXISTS(SELECT 1 FROM pg_index i WHERE i.indexrelid=to_regclass('c_posts.thumbnail_oldest_idx')
@@ -71,7 +75,7 @@ func (c *Community) checkThumbnailStorageSchema(ctx context.Context, access bool
  AND has_table_privilege(current_user,'c_posts.thumbnails','SELECT') AND has_table_privilege(current_user,'c_posts.thumbnails','DELETE')
  AND (NOT $1 OR (has_table_privilege(current_user,'c_posts.thumbnails','SELECT')
  AND has_table_privilege(current_user,'c_posts.thumbnails','INSERT') AND has_table_privilege(current_user,'c_posts.thumbnails','DELETE')
- AND has_table_privilege(current_user,'c_posts.thumbnail_storage','SELECT')))))`, access, thumbnailConstraintsDigest).Scan(&ok)
+ AND has_table_privilege(current_user,'c_posts.thumbnail_storage','SELECT')))))`, access, []string{thumbnailConstraintsDigest, thumbnailRestoredConstraintsDigest}).Scan(&ok)
 	if err != nil || !ok {
 		return ErrAuthorizationUnavailable
 	}

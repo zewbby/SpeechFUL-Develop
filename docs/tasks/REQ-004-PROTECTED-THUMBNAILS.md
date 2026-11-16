@@ -50,3 +50,6 @@
 - 已检测到 vivo V2323A（10CEAG17RY003M7），既有设备租约已释放；沿用隔离测试包，不覆盖publictrial用户App。当前准备真实FeedScreen、原生vault、受保护TLS及C Gate的一次性数据测量；不是将HTTP耗时代替首屏。
 - 已推送cd60f40并创建draft PR#7。该head的12项workflow中11项成功；Android prerelease的实际候选构建成功，rehearsal在备份恢复后启动失败。其根因是`pg_restore --no-privileges`使新触发器函数恢复PUBLIC EXECUTE，启动检查正确拒绝。补全canonical grant中的函数REVOKE及角色审计，新增真实dump/restore回归；原始失败run43791157808保留。
 - 本次增量以cd60f40为基线：恢复权限修复＋独立手机测量工具；后台请求编码与最终授权逻辑不变。手机指标、最终head CI及恢复复验均进行中，不报整体PASS。
+
+- 恢复复验进一步定位了PG16将等价AND括号扁平化的问题：仅byte_length三项AND的括号变化使整体CHECK指纹改变。现在严格接受已核对的fresh／restore两种完整指纹，不移除任何长度／摘要／尺寸约束；真实dump/restore＋canonical ACL＋受限runtime启动检查已PASS。第二轮恢复失败run43792697067保留，等待当前修复的CI。
+- 本机Linux NDK clang为空，native构建无产物；停止使用该工具链，改用现成Windows编译器。不恢复整套SDK、不改依赖锁或生产配置，手机指标尚未完成。
