@@ -226,5 +226,52 @@ func TestPostTagsScalePerformancePostgres(t *testing.T) {
 		}
 		t.Logf("ENABLE_CHECK scale=%d ms=%.3f", item.scale, float64(time.Since(start).Microseconds())/1000)
 		measure(item.scale, "optimized")
+
+		// Verify lifecycle behavior at both scales after the timed samples.
+		expectLabels := func(want string) {
+			t.Helper()
+			var got string
+			if err := s.cp.QueryRow(ctx, `SELECT COALESCE(string_agg(label,',' ORDER BY label COLLATE "C"),'') FROM c_posts.post_tag_terms WHERE post_id=$1::uuid`, dbPost).Scan(&got); err != nil || got != want {
+				t.Fatalf("scale %d labels=%q want=%q err=%v", item.scale, got, want, err)
+			}
+		}
+		run(`UPDATE c_posts.posts SET tags=ARRAY['NBA','CBA'] WHERE post_id=$1::uuid`, dbPost)
+		expectLabels("CBA,NBA")
+		run(`UPDATE c_posts.posts SET tags=ARRAY['CASE'] WHERE post_id=$1::uuid`, dbPost)
+		expectLabels("CASE")
+		tx, e = s.cp.Begin(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = tx.Exec(ctx, `UPDATE c_posts.posts SET tags=ARRAY['ROLLBACK'] WHERE post_id=$1::uuid`, dbPost); e != nil {
+			t.Fatal(e)
+		}
+		if e = tx.Rollback(ctx); e != nil {
+			t.Fatal(e)
+		}
+		expectLabels("CASE")
+		run(`UPDATE c_posts.posts SET tags='{}' WHERE post_id=$1::uuid`, dbPost)
+		expectLabels("")
+		run(`UPDATE c_posts.posts SET tags=ARRAY['NBA'] WHERE post_id=$1::uuid`, dbPost)
+		run(`UPDATE c_posts.posts SET moderation_hidden=true WHERE post_id=$1::uuid`, dbPost)
+		expectLabels("")
+		run(`UPDATE c_posts.posts SET moderation_hidden=false WHERE post_id=$1::uuid`, dbPost)
+		expectLabels("NBA")
+
+		deleteKey := uuid.New()
+		createdForDelete := postHTTPSJSON(t, s, "PUT", "/api/v1/post-commands/"+base64.RawURLEncoding.EncodeToString(deleteKey[:]), owner, "", posts.CreatePostInput{ChannelID: channel, IdentityID: identity, Title: "删除验证", Body: "正文", Tags: []string{"DelScale"}}, 202)
+		if _, e = s.c.PublishAcceptedPosts(ctx, 100); e != nil {
+			t.Fatal(e)
+		}
+		var deleteCount int
+		if e = s.cp.QueryRow(ctx, `SELECT count(*) FROM c_posts.post_tag_terms WHERE tag_key='delscale'`).Scan(&deleteCount); e != nil || deleteCount != 1 {
+			t.Fatalf("delete setup: %d %v", deleteCount, e)
+		}
+		deleteKey = uuid.New()
+		postHTTPSJSON(t, s, "POST", "/api/v1/posts/"+createdForDelete["postId"].(string)+"/delete", owner, base64.RawURLEncoding.EncodeToString(deleteKey[:]), nil, 200)
+		if e = s.cp.QueryRow(ctx, `SELECT count(*) FROM c_posts.post_tag_terms WHERE tag_key='delscale'`).Scan(&deleteCount); e != nil || deleteCount != 0 {
+			t.Fatalf("deleted projection: %d %v", deleteCount, e)
+		}
+		t.Logf("SCALE_LIFECYCLE_PASS scale=%d", item.scale)
 	}
 }
