@@ -2,7 +2,7 @@
 
 - 模式：常规；负责人／状态维护人：当前 Session。
 - 分支／Worktree／PR：原分支 `codex/feat/blacklist-redesign`；独立 Worktree `blacklist-redesign/SpeechFUL.git`；用户要求与信件项目统一交付，代码已合入 `codex/feat/letter-to-students` 的统一 PR [#8](https://github.com/zewbby/SpeechFUL-Develop/pull/8)，原 PR #9 作为重复项关闭。
-- 实际基线：`develop/main`，`1d829b2623a6c32830ee1b74fae6c99a436ad3b3`。`origin` 是旧仓库，当前开发与最近黑名单 PR 均在 `zewbby/SpeechFUL-Develop`。
+- 实际基线：最初为 `develop/main@1d829b2623a6c32830ee1b74fae6c99a436ad3b3`；交付前于 2026-11-17 合并最新 `develop/main@fed946b0d67dceb8ef9e27cd57310cf9ef9e7b40`。`origin` 是旧仓库，当前开发与最近黑名单 PR 均在 `zewbby/SpeechFUL-Develop`。
 - 授权依据与边界：用户 2026-11-16 要求“新建分支，黑名单页面重写并美观化，然后PR”；覆盖实现、验证、本地提交、推送任务分支及 PR，不含合并、发布、装机或正式数据操作。原工作区“一封信”改动保留。
 - 需求确认：本轮要求重写和美观化；沿用 AUTHOR-BLOCK-UNIFICATION-01 已确认的单一账号级拉黑、头像／昵称／描边“解除”、无返回箭头、无分区说明、空态“暂无记录”、简化确认面板。无新增业务取舍。2026-11-17 用户确认 [信件与黑名单视觉参考](../../design/ui-drafts/letter-blacklist-reference-v1.html) 并明确按稿改动，随后交付 PR；本轮继续保持既有产品语义。`grill-with-docs` 及其依赖在仓库与本机技能目录不可用。
 - 更新日期：2026-11-17。
@@ -42,6 +42,7 @@
 | 视觉 | Flutter 3.47.5；Windows；真实字体 | PASS：已查看 320×740／1.8 倍字号浅深主题、402×874 空态与解除面板 PNG；中文、按钮、长昵称截断及分隔线正常。路径为 `apps/mobile/build/blacklist-render/`，CI 产物名 `feed-ui-host-renders`。 |
 | 视觉改版 | `710bc7357b5635032cce518701cbbf68d86a1e44`；Flutter 3.47.5；Windows；真实字体 | PASS：用户确认稿已落地为淡色头像底色、圆形用户失效空态、拖拽提示和 16px 顶角确认面板；主操作改为已确认深灰蓝。重新生成并查看 `list-402`、`empty-402`、`confirm-402`、320×740／1.8 倍浅深主题截图，长昵称和按钮无溢出。 |
 | 视觉改版回归 | 同上 | PASS：`flutter analyze --no-pub` 无问题；信件、黑名单、Feed、设置、本地化和读屏聚焦测试共 74 项通过；协作规则 19 项通过。 |
+| 最新 main 同步 | 合并提交 `b6a1f5a`；`develop/main@fed946b` | PASS：自动合并无冲突；合入后重新执行 `flutter analyze --no-pub` 无问题，同一组 74 项 Flutter 聚焦测试及 19 项协作回归通过。 |
 | 验证 | 工作树差异；Flutter 3.47.5 | PASS：`flutter analyze --no-pub` 无问题；`flutter test --no-pub test/feed_ui_test.dart test/profile_settings_flow_test.dart test/blacklist_screen_test.dart test/app_localizations_test.dart test/talkback_semantics_test.dart` 共 61 项通过。新增测试覆盖加载、取消、解除失败重试、会话变化、小屏大字浅深渲染、空态和确认面板。 |
 | 验证 | 同工作树；Windows | BLOCKED：`flutter build bundle --debug --no-pub` 因本机未安装 Android SDK 未完成；由产品 CI 覆盖构建。 |
 | 统一交付 | 合并提交 `81971208d0eb7599a9d9851cd2c3ec098e038316`＋任务记录更新；Windows／Flutter 3.47.5 | PASS：信件、黑名单及 Feed UI 聚焦测试共 60 项通过；统一 PR #8 的最终 CI 以实时状态为准。 |
