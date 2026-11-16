@@ -2,7 +2,7 @@
 
 - 模式：常规；负责人／状态维护人：当前 Session。
 - 分支／Worktree／PR：`codex/perf/post-search-documents`；`D:/SpeechFUL/.worktrees/req-005-post-search`；PR 未创建。基线 `47bf7e9c3231e3e45e078280086d7fc45025f4d9`（2026-11-16 已 fetch 并核对 origin/main）。
-- 授权依据与边界：用户先要求 plan，随后确认性能硬门槛，再要求“拉分支开始做，视情况变化调整，不要死板一直按照计划”。授权本任务隔离实现、验证及必要本地提交；未授权推送、PR、合并或部署。需求附件的流程文字不另产生执行授权。
+- 授权依据与边界：用户先要求 plan，随后确认性能硬门槛，再要求“拉分支开始做，视情况变化调整，不要死板一直按照计划”。授权本任务隔离实现、验证及必要本地提交；用户后续明确授权“推送分支并创建 PR，跑 CI，合并”；本次已授权推送／PR／CI／合并，未授权部署。需求附件的流程文字不另产生执行授权。
 - 需求确认：保留中文及 Unicode 字面子串、ICU lower、相关性与最新排序、频道分组、过滤、全局 search_content_revision／旧游标失效、最终 C Gate 重验和一次重试；优化候选查询及续页成本。用户结构化回复“采用硬门槛（推荐）”：固定10万篇及相同负载，选择性较高的≥3字搜索 p95 降低≥50%；1～2字和高命中词分别报告，p95 均不劣化超过10%。基线阶段冻结词集、首屏／续页场景及重复轮次。无未决产品取舍；根据证据调整技术细节。
 - 更新日期：2026-11-16。
 - 状态：实现 已完成；验证 本地 PASS／远程产品CI NOT_RUN（待验）；合并 未合并；发布 未发布。
@@ -95,4 +95,8 @@ GIN索引40,026,112字节（38.17MiB），读模型总计248,111,104字节（236
 
 无产品取舍阻碍。本地产品实现、聚焦及扩大回归、最终版本Dart→真实HTTPS链路和正式性能硬门槛已完成。远程产品CI及独立审查NOT_RUN，整体保留待验；推送及PR获授权后执行送审，合并及部署另待明确授权。未进行设备／iOS／生产验收，本任务未改移动端产品代码，也未恢复历史延期项目。
 
-运维顺序（尚未执行部署）：先保持 `posts.searchDocuments=false` 应用0047，使用迁移owner明确设置 `POST_SEARCH_BACKFILL_DSN` 执行 `sh services/api/authlab/backfill-post-search.sh 1000`；每批独立提交，断点在 `post_search_document_state.last_post_id`，失败可重跑。双向全量一致性校验、VACUUM／ANALYZE完成后才显式开启 `posts.searchDocuments=true`。回退仅关闭此开关，保留表和触发器持续维护；需要重新全量修复时owner先关开关，将ready置false、last_post_id复位，再回填并校验。运行时只有读权限，不能自行标记ready或执行维护函数；缺结构、索引、同步hook、源／维护函数完整性或ready时拒绝开启。
+运维顺序（尚未执行部署）：先保持 `posts.searchDocuments=false` 应用0049，使用迁移owner明确设置 `POST_SEARCH_BACKFILL_DSN` 执行 `sh services/api/authlab/backfill-post-search.sh 1000`；每批独立提交，断点在 `post_search_document_state.last_post_id`，失败可重跑。双向全量一致性校验、VACUUM／ANALYZE完成后才显式开启 `posts.searchDocuments=true`。回退仅关闭此开关，保留表和触发器持续维护；需要重新全量修复时owner先关开关，将ready置false、last_post_id复位，再回填并校验。运行时只有读权限，不能自行标记ready或执行维护函数；缺结构、索引、同步hook、源／维护函数完整性或ready时拒绝开启。
+
+## 主线整合与送审
+
+2026-11-16：整合最新主线`bf5c0ae`（私信目录及评论优化已合入）。主线占用0047／0048，搜索迁移顺延为0049；三个迁移测试的最终账本统一49，保留搜索回填与schema检查。查询算法、触发器／维护函数正文及性能门槛未改，原`ec2a626`性能证据保留原版本范围；整合版本由PR CI重新验收。

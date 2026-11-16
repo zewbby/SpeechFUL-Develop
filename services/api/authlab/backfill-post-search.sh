@@ -10,7 +10,7 @@ case "$batch" in ''|*[!0-9]*|0*) echo 'batch must be 1..10000' >&2; exit 2 ;; es
 export PGOPTIONS="${PGOPTIONS:-} -c statement_timeout=60s -c lock_timeout=5s"
 search_psql() { psql -X -q -v ON_ERROR_STOP=1 --dbname="$POST_SEARCH_BACKFILL_DSN" "$@"; }
 owner=$(search_psql -At -c "SELECT current_user=pg_get_userbyid(relowner) FROM pg_class WHERE oid=to_regclass('c_posts.post_search_documents')")
-[ "$owner" = t ] || { echo 'migration owner and installed 0047 are required' >&2; exit 2; }
+[ "$owner" = t ] || { echo 'migration owner and installed 0049 are required' >&2; exit 2; }
 retries=0
 while :; do
     processed=$(search_psql -At -c "SELECT c_posts.backfill_post_search_documents($batch)")

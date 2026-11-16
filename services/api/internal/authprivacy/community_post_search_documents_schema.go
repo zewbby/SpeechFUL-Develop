@@ -3,7 +3,7 @@ package authprivacy
 import "context"
 
 // Digests bind the actual LF-normalized function bodies, not only signatures.
-// Filled from migration 0047 and checked independently against PostgreSQL.
+// Filled from migration 0049 and checked independently against PostgreSQL.
 var postSearchDocumentFunctionDigests = map[string]string{
 	"current_post_search_documents(uuid)":     "f990d5993abe3da683c137c00a71d444a951565211797a16e9e3c8beddacfa2b",
 	"refresh_post_search_document(uuid)":      "a1608492dee81fc965777b21d6d98942420b4358bbb92aa7a37d85a1203f77e4",
