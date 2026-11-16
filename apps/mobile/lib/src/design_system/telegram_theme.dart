@@ -153,6 +153,9 @@ abstract final class HhTelegramTheme {
       yield LicenseEntryWithLineBreaks([
         'Noto Sans SC',
       ], await rootBundle.loadString('assets/fonts/OFL-NotoSansSC.txt'));
+      yield LicenseEntryWithLineBreaks([
+        'SpeechFUL Letter Serif (Noto Serif SC subset)',
+      ], await rootBundle.loadString('assets/fonts/OFL-NotoSerifSC.txt'));
     });
   }
 
