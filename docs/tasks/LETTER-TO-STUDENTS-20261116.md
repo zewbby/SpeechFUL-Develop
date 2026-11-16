@@ -1,11 +1,11 @@
 # LETTER-TO-STUDENTS-20261116 - 致同学的一封信
 
 - 模式：常规；负责人／状态维护人：当前 Session。
-- 分支／Worktree／PR：`codex/feat/letter-to-students`；`E:/code_collection/java_code/SpeechFUL.git`；PR [#8](https://github.com/zewbby/SpeechFUL-Develop/pull/8)。实现基线为开发仓库 `zewbby/SpeechFUL-Develop` 的 `main@1d829b2`；该仓库当前为公开仓库。
+- 分支／Worktree／PR：`codex/feat/letter-to-students`；`E:/code_collection/java_code/SpeechFUL.git`；统一 PR [#8](https://github.com/zewbby/SpeechFUL-Develop/pull/8)，同时交付黑名单重做。实现基线为开发仓库 `zewbby/SpeechFUL-Develop` 的 `main@1d829b2`；该仓库当前为公开仓库。
 - 授权依据与边界：用户要求“新建分支，制作《致同学的一封信》，进行文案编写 & 弹窗实现，完成之后进行pr，第一步是写文案”，后续确认弹窗交互。覆盖本任务开发、验证、提交、推送及向当前开发仓库 `zewbby/SpeechFUL-Develop` 创建 PR；合并、发布未执行。2026-11-16 GitHub API 核对该仓库当前为公开，名称与现有 `develop` 远端一致。
 - 需求确认：以用户随后提供的全文为当前文案，保留措辞、段落与“SpeechFUL项目组”署名。用户确认每个账号首次登录新设备进入首页时自动展示；关闭按钮为“我已阅读”，位于正文最下方，必须滑动到底部后才能看到并使用。阅读状态按账号和本机安装实例保存；设置保留重读入口。无未决取舍。
 - 更新日期：2026-11-16。
-- 状态：实现 已完成；验证 PASS（本机与 PR 产品 CI）；合并 未合并；发布 未发布。
+- 状态：实现 已完成；合并分支本机验证 PASS，统一 PR CI 以 #8 实时状态为准；合并 未合并；发布 未发布。
 
 ## 目标与范围
 
@@ -57,6 +57,7 @@ SpeechFUL项目组
 | 协作验证 | 同基线＋本任务差异；`python -B -X utf8 -m unittest discover -s tools/tests -p test_collaboration.py -v`、`git diff --check` | PASS：协作回归 19 项；差异空白检查通过。 |
 | 真实渲染 | `apps/mobile/build/student-letter-render/` | PASS：375×812、320×640／2 倍字深色、812×375 横屏、768×1024 繁体及日文共 10 张首末状态。实际查看中文首末、小屏大字暗色末尾及英文横屏末尾；随包宋体子集解决系统字体回退黑块。按钮首次不可触达，到底后可见且高度 ≥48；减少动画已覆盖。 |
 | PR 产品 CI | PR #8 head `4067ae9db5635580ffbdc883d0011d368d210db4`；GitHub Actions | PASS：所有非跳过检查成功，`actual-process-acceptance` SKIPPED。包括 `flutter-and-android`、`flutter-and-real-feed`、`flutter-auth-regression`、`avatar-flutter`、`client`、`compile`、`candidate`、`rehearsal` 及服务端检查。 |
+| 黑名单合并交付 | 合并提交 `81971208d0eb7599a9d9851cd2c3ec098e038316`＋任务记录更新；Windows／Flutter 3.47.5 | PASS：`flutter analyze --no-pub` 无问题；信件、黑名单及 Feed UI 聚焦测试共 60 项通过。统一 PR #8 的最终 head CI 以 PR 实时状态为准。 |
 | Android bundle | 本机 `flutter build bundle --debug --no-pub`；PR #8 CI | BLOCKED（仅本机）：宿主缺少 Android SDK。PR 的 `flutter-and-android` 已 PASS，目标平台构建缺口已由 CI 覆盖。 |
 | 原生设备／生产 | 本轮宿主验证 | NOT_RUN；宿主存储替身不代证原生跨进程／真机／生产验收。 |
 
