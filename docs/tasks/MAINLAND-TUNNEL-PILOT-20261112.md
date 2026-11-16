@@ -92,3 +92,15 @@
 证据根目录：`C:/Users/24237/Documents/ChatGPT/Hnuhole/deliveries/mainland-tunnel-pilot-20261113/`；含 runtime-final-proof.json、upload-telemetry-smoke.json（如实保留首轮认证超时）、idea-backend-tools.png。原始私有配置、备份、日志不提交。工具说明见 [Windows 后端工具](../../tools/windows/README.md)。
 
 下一步：等用户所述其他 PR 合并并明确统一构建窗口后，核对最终代码／C/V 构建参数、原图专用期限与状态展示的实际合入情况，再准备统一新版本与真机成功闭环；不自动打包或扩大到其他 PR 的合并。后端 publicOrigin／peerOrigin 和 WebAuthn RP 仍为原配置，完整认证兼容性单列待验，不绕过 Gate、RP 或证书校验。
+
+## 2026-11-16 本机后端 Gate 检查点不一致恢复
+
+- 常规模式，单 Session、无委派。记录分支 `codex/fix/backend-gate-recovery-20261116`，Worktree `E:/Hnuhole-env/source/SpeechFUL-backend-gate-recovery-20261116`；文档基线 `1d829b2623a6c32830ee1b74fae6c99a436ad3b3`。保留 `D:/SpeechFUL` 及其已有 Worktree；本轮不升级运行二进制。
+- 授权：用户先问启动失败原因及如何恢复，随后明确“你直接帮我解决这个问题”。仅恢复当前 public-trial 后端并验证；不打包 App、不操作其他 PR、不正式部署。已告知签名恢复会使 C 旧会话及 V 旧代次凭据失效，账号、帖子保留。
+- 已确认事实：`resume-c.private.log` 拒绝普通恢复；C 数据库 FROZEN 第 1 代，版本 9510，冻结于 `2026-11-15T23:20:37.593186+08:00`，原因为 `SNAPSHOT_OR_ANCHOR_MISMATCH`。同版数据库高水位 `23:19:29.457707+08:00`、签名 anchor 为 `23:19:29.503424+08:00`。V 数据库仍 OPEN 第 3 代、版本 9501，但数据库高水位 `23:19:29.465466+08:00` 与 anchor `23:19:29.500039+08:00` 也不一致；只恢复 C 不能完整启动。最初为何出现未完成的双端检查点更新尚无确定证据，不将推测记作根因。
+- 操作：本机专用脚本 `E:/Hnuhole-env/backend-operations-20261113/recover-gates-20261116.ps1`，默认仅检查；显式 `-Recover` 才在两套私有数据库备份和摘要验证后，调用现有受限身份签名 `authdev recover`。绑定本次冻结时间、版本、代次、资源归属及 authdev SHA256 `7fd55784b7c29ff15c6ddaa52e2f1a72edda85a04b6a1dd85e3aa6e3b2543f14`；不手工写 Gate 行、修改签名文件或重置数据库。备份及原始日志仅存任务私有目录。
+- 状态：显式签名恢复、正常启动、常规 Stop → Start、本机／Frp 公网、合成账号登录和受保护读取均 PASS；当前服务保持运行。恢复脚本及本记录为本机成果，未 Push／PR／合并，未正式发布。
+- 恢复前先完成两份真实 PostgreSQL custom dump、`pg_restore --list` 目录可读检查及 C/V 检查点备份；备份为 `/home/hnuhole/public-trial-access-01/runtime/backup/cv-gate-recovery-20261116-7df62bb886744448bb620ac8ad525762`，`receipt.json` 记录工具、备份和业务摘要。没有以目录可读声称完整还原演练。数据库只通过各自受限身份及既有签名 `authdev recover` 恢复到 C OPEN:2、V OPEN:4；V 在正常恢复事务中先围栏旧 OPEN 代次。除 Gate／审计以外的数据和序列逻辑导出摘要在恢复前后精确一致，密钥、证书及 C/V／operator 配置摘要不变。
+- 验证证据在 `E:/Hnuhole-env/backend-operations-20261113/`：`gate-recovery-20261116-runtime.json` 绑定实际被测 C/V/authdev 二进制与恢复脚本 SHA256；正常 Stop → Start 后仍 OPEN:2/4，累计 RECOVER 数分别 2/4，watch 时间证据继续推进。未修改通用启动工具的“不自动 recover”策略。
+- `gate-recovery-20261116-public-checks.json`：本机 C/V `/health/ready` 均 200；实际 Frp 社区／认证入口严格 TLS 均 200。`gate-recovery-20261116-business-checks.json`：已有任务合成账号经 Frp 密码登录 201，当前会话、受保护频道与首页均 200，未登录频道 401。只操作既有合成账号并产生正常新会话；没有发送 OTP 邮件、操作真实用户账号或发布帖子／图片。
+- 边界：本次解决已确认的 C/V 检查点不一致及服务不可启动；没有证据认定最初的不完整更新由哪次关机或进程中断引起。没有修改 Gate 的安全一致性规则，也不宣称今后突然断电永不再触发。真机重新登录／上传、Windows 整机重启验收 NOT_RUN；本轮没有 App 或服务二进制升级。
