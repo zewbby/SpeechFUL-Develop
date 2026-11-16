@@ -4,6 +4,17 @@ import 'package:flutter/services.dart';
 
 import 'motion_routes.dart';
 
+/// Slate action confirmed for the student letter and blacklist surfaces.
+Color hhQuietAction(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? const Color(0xFF8FB3D1)
+    : const Color(0xFF34536F);
+
+Color hhOnQuietAction(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? const Color(0xFF12202B)
+    : Colors.white;
+
 /// Shared appearance calibrated against the user's Telegram Android screenshot.
 /// JPEG samples are approximate; light text uses neutral grays rather than blue.
 @immutable

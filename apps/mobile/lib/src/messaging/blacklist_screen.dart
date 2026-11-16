@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../design_system/motion_routes.dart';
 import '../design_system/telegram_theme.dart';
 import '../identity/identity_avatar.dart';
 import '../localization/app_localizations.dart';
@@ -65,10 +66,16 @@ class _DmBlacklistScreenState extends State<DmBlacklistScreen> {
     if (!_current || _loading || _pending != null) return;
     setState(() => _pending = item.blockId);
     try {
+      final p = HhTelegramPalette.of(context);
       final confirmed = await showModalBottomSheet<bool>(
         context: context,
         useSafeArea: true,
         isScrollControlled: true,
+        backgroundColor: p.raised,
+        sheetAnimationStyle: HhMotionRoutes.sheet(context),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
         builder: (context) => AnimatedBuilder(
           animation: _posts,
           builder: (context, _) =>
@@ -202,12 +209,9 @@ class _DmBlacklistScreenState extends State<DmBlacklistScreen> {
               ),
             )
           else if (authors?.isNotEmpty != true)
-            SliverFillRemaining(
+            const SliverFillRemaining(
               hasScrollBody: false,
-              child: _ListNotice(
-                icon: Icons.block_outlined,
-                text: hhText(context, '暂无记录'),
-              ),
+              child: _EmptyState(),
             )
           else
             SliverPadding(
@@ -317,19 +321,78 @@ class _BlockAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = HhTelegramPalette.of(context);
+    final tone = switch (name.isEmpty
+        ? 0
+        : name.codeUnits.fold(0, (a, b) => a + b) % 3) {
+      0 => hhQuietAction(context),
+      1 => const Color(0xFFB18A62),
+      _ => const Color(0xFFB45F68),
+    };
+    final toneOpacity = Theme.of(context).brightness == Brightness.dark
+        ? .18
+        : .13;
     return ExcludeSemantics(
       child: IdentityAvatar(
         avatar: author.avatar,
         radius: radius,
         fallback: CircleAvatar(
           radius: radius,
-          backgroundColor: p.background,
+          backgroundColor: Color.alphaBlend(
+            tone.withValues(alpha: toneOpacity),
+            p.background,
+          ),
           foregroundColor: p.ink,
           child: Text(
             name.isEmpty ? '?' : name.characters.first,
             textScaler: TextScaler.noScaling,
             style: TextStyle(fontSize: radius * .8),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = HhTelegramPalette.of(context);
+    return Align(
+      alignment: const Alignment(0, -.08),
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          key: const ValueKey('blacklist-empty'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: p.background,
+                border: Border.all(color: p.line),
+              ),
+              child: Icon(
+                Icons.person_off_outlined,
+                size: 28,
+                color: p.secondary,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              hhText(context, '暂无记录'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: p.ink,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                height: 1.5,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -420,14 +483,30 @@ class _UnblockSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = HhTelegramPalette.of(context);
+    final action = hhQuietAction(context);
+    final onAction = hhOnQuietAction(context);
     final name = localizedPostAuthor(context, author);
     return SingleChildScrollView(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+        padding: const EdgeInsets.fromLTRB(24, 10, 24, 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            ExcludeSemantics(
+              child: Center(
+                child: Container(
+                  key: const ValueKey('author-unblock-handle'),
+                  width: 38,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 18),
+                  decoration: BoxDecoration(
+                    color: p.line,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+            ),
             if (current) ...[
               Center(
                 child: _BlockAvatar(author: author, name: name, radius: 28),
@@ -454,6 +533,10 @@ class _UnblockSheet extends StatelessWidget {
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
                 padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: action,
+                foregroundColor: onAction,
+                disabledBackgroundColor: action.withValues(alpha: .45),
+                disabledForegroundColor: onAction.withValues(alpha: .72),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),

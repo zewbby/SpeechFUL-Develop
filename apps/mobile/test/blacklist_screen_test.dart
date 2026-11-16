@@ -192,7 +192,31 @@ void main() {
     await tester.pumpWidget(_screen(f));
     await tester.pumpAndSettle();
     expect(find.text('暂无记录'), findsOneWidget);
+    expect(find.byKey(const ValueKey('blacklist-empty')), findsOneWidget);
     await _capture(tester, 'empty-402');
+  });
+
+  testWidgets('blacklist renders the populated list', (tester) async {
+    tester.view.physicalSize = const Size(402, 874);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _realFonts();
+    final f = await feed.FeedFixture.create();
+    addTearDown(f.dispose);
+    f.api.authorBlocks.addAll([
+      _block('block-a', '林间来信'),
+      _block('block-b', '晚风'),
+      _block('block-c', '旧书店的猫'),
+      _block('block-d', '北门散步的人'),
+    ]);
+    await tester.pumpWidget(_screen(f));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('author-unblock:block-a')),
+      findsOneWidget,
+    );
+    await _capture(tester, 'list-402');
   });
 
   testWidgets('blacklist renders the unblock confirmation sheet', (
@@ -214,6 +238,7 @@ void main() {
       find.byKey(const ValueKey('author-unblock-confirm')),
       findsOneWidget,
     );
+    expect(find.byKey(const ValueKey('author-unblock-handle')), findsOneWidget);
     await _capture(tester, 'confirm-402');
   });
 }

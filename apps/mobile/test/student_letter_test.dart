@@ -32,6 +32,25 @@ Future<void> _read(WidgetTester tester) async {
     isNotNull,
   );
   expect(find.byKey(_buttonKey).hitTestable(), findsOneWidget);
+  expect(
+    tester
+        .widget<AnimatedOpacity>(
+          find.byKey(const ValueKey('student-letter-scroll-cue')),
+        )
+        .opacity,
+    0,
+  );
+  expect(
+    tester
+        .widget<FractionallySizedBox>(
+          find.descendant(
+            of: find.byKey(const ValueKey('student-letter-progress')),
+            matching: find.byType(FractionallySizedBox),
+          ),
+        )
+        .heightFactor,
+    closeTo(1, .02),
+  );
 }
 
 Future<void> _acknowledge(WidgetTester tester) async {
@@ -59,6 +78,18 @@ void main() {
       expect(find.text(paragraph), findsOneWidget);
     }
     expect(find.text(studentLetterSignature), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('student-letter-progress')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<AnimatedOpacity>(
+            find.byKey(const ValueKey('student-letter-scroll-cue')),
+          )
+          .opacity,
+      1,
+    );
     expect(find.byKey(_buttonKey).hitTestable(), findsNothing);
     expect(
       tester.widget<FilledButton>(find.byKey(_buttonKey)).onPressed,
@@ -253,6 +284,7 @@ void main() {
             'Roboto': ['assets/fonts/Roboto-Regular.ttf'],
             'HhNotoSansSC': ['assets/fonts/NotoSansSC-Variable.ttf'],
             'StudentLetterSerif': ['assets/fonts/StudentLetterSerif.ttf'],
+            'MaterialIcons': ['fonts/MaterialIcons-Regular.otf'],
           }.entries) {
             final loader = FontLoader(entry.key);
             for (final asset in entry.value) {
