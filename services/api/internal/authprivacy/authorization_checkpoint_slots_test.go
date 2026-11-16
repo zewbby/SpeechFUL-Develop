@@ -50,7 +50,7 @@ func checkpointSlotsTestRead(t *testing.T, s *FileAuthorizationAnchorStore) (aut
 		t.Fatal(err)
 	}
 	defer f.Close()
-	slots, err := decodeCheckpointSlots(f, s.public)
+	slots, err := decodeCheckpointSlots(f, s.public, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,7 @@
 - 授权依据与边界：2026-11-16 用户明确要求“按这个计划开始实施，完成六类列表批量读取和首页 10/5/5 分页，再按三项硬门槛验收”，授权隔离实现、必要本地提交和验证；随后明确回复“授权本任务推送、草稿 PR 和 CI（推荐）”，覆盖本任务分支后续必要push、草稿PR及产品／性能CI。不修改正式数据；远端合并和正式发布仍未授权。
 - 需求确认：用户 Q1 选择六类共用列表一起优化；Q2 选择三项均作硬门槛；后续明确首屏10条、刷新新增5条、续页5条；Q4 选择最新5条先显示、后续刷新补齐中间帖子。刷新不足5条按实际数量，无新帖保留已有列表。六类为首页、频道、作者、我的帖子、点赞、收藏；10/5/5 适用于首页及频道筛选，其他列表原页大小保留。热榜和搜索不扩大范围。
 - 更新日期：2026-11-16。
-- 状态：列表及分页实现已完成，SQL硬门槛PASS。固定槽候选971d14e的独立Linux CI计时全部有效，接口40%明确FAIL；17类workflow除Feed性能外均PASS。Astra Ultra继续定位并修复固定数据库往返，后续独立复测交回GPT-6.1 Sol XHigh。手机25%与布局NOT_RUN。PR保持draft；未合并；未发布。
+- 状态：列表及分页实现已完成，SQL硬门槛PASS。2d76784＋main 47bf7e9的独立Linux CI计时全部有效，接口40%明确FAIL；17类workflow中16类PASS，仅Feed性能FAIL。Astra Ultra已形成精确签名数学结果复用与等价双向屏蔽SQL候选，聚焦真实SQL、安全及host检查PASS，待对应head独立CI／GPT-6.1 Sol XHigh复测。手机25%与布局NOT_RUN。PR保持draft；未合并；未发布。
 
 ## 目标与范围
 
@@ -136,11 +136,22 @@
 - 两套同请求HTTPS诊断各60样本、全部clockvalid与内容校验PASS，`ultra-roundtrips-stage-{diagnostic-971,source}.json`保留完整结果；新草稿总均值反而更高：5/10/20条旧14.76/12.97/13.60ms，新22.75/42.84/24.39ms。未改动的anchor写入阶段从约4.2ms变为8.6/16.4/6.6ms，原因未证实；不能据此宣称环境波动或产品收益已确认。这是含随后撤回ANY投影的草稿诊断，不是最终候选的40%验收。减少6次往返是结构事实，实际p95由新head独立LinuxCI判断。
 - 撤回投影草稿后，`ultra-roundtrips-final-feed-05.log`再次对最终代码运行六类逐页对照PASS（authprivacy11.525s）、真实HTTPS12新帖增量PASS（HTTP12.653s）；主体SQL仍20/50固定。`ultra-roundtrips-host-01.log`完整go test/build/vet PASS；最终测试修订后`ultra-roundtrips-final-host-05.log`再验authprivacy host test/vet PASS。未重跑971正式三轮，未调40%／25%门槛或计时守卫。
 
+## 2026-11-16 2d有效FAIL与重复计算修复
+
+- [CI 43839635746](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43839635746)的42组全部有效、`Complete=true/PASS=false`。实际home10降幅39.10/37.19/39.15%，next5为23.84/21.13/23.23%，refresh5为24.23/11.47/11.37%；仍未满足40%。17类workflow中16类PASS，Feed的host／完整SQL／独立C/V前置均PASS。原始artifact `ci-2d-feed-batch-performance.zip` SHA256 `19E4F9C93505246920B59E51ABFAC51A3CA51F17C4A68DFF936DF8C87672BABD`；`ci-2d-feed-request-timing.zip` SHA256 `942C186FE70833B09BB72E6C7932AA03E1E87830C36A3146CE1746966B5EA6F7`。
+- 来源纠正：被测synthetic merge `fe6b72aab7c98256587bab8acbf2985e926ad345`包含main `47bf7e9c3231e3e45e078280086d7fc45025f4d9`与2d76784，并非2d纯tree。已干净合入该main为`344628cc6a63d9708232aebfa4f2fd3412153605`，tree精确同为`cfebdd27fe4bcc689755afa594f4efb627ac6d25`。保留标签投影及0045/0046迁移；冻结1d基线不变，不能把合成候选的全部变化归给2d。
+- 重复验签：正常prepared请求对相同字节执行约10次Ed25519计算。每个Gate／anchor store新增最多4条成功项LRU，精确比较公钥、完整签名消息和签名，miss先复制再验证，只复用数学结果。它不保存anchor解析结果、证据对象、期限或授权决定；每次仍读完整文件、检查头部／两槽／序号／填充、解析新JSON、取得当前证据及时间、比较SQL／anchor／资源proof并完成最终业务事务。换公钥／篡改／过期／回滚不借缓存放行，磁盘格式与提交顺序未改。Gate设计未要求每次重新执行签名数学计算，无需改变既有权威状态契约。
+- `ultra-memo-cpu-02.log`的隔离CPU/count诊断：10.00→2.001次验签／请求，三次约0.500–0.508ms→0.100–0.105ms；这不包含HTTP、SQL或持久化，不能作为40%证据。暖缓存坏槽／截断、完整输入／公钥绑定、复制所有权、容量淘汰、并发、期限和域检查均PASS。初次真实回滚测试被生产单调性trigger拒绝注入，`ultra-memo-gates-01.log`原aggregate FAIL保留；按既有恢复旧库测试模式，仅在自有fixture中禁用trigger还原旧SQL再立即启用，02及最终聚焦均证明暖缓存拒绝并持久冻结。01中其他C/V回滚／错前序／临时证据／break-glass／截断检查PASS。
+- `ultra-generic-plans-03.json`保留全部实际连接26次执行及每变体6次`EXPLAIN EXECUTE`，覆盖5/10/20条、offset0/10/40。真实pgx已转generic，不能用每次重新规划的EXPLAIN替代。在offset40取5条时投影扫描45个posts，原函数逐行检查屏蔽；直接展开相同双向`NOT EXISTS`使数据库使用反连接。Limit5投影执行均值0.233/0.297/0.496ms→0.095/0.107/0.149ms，候选0.192/0.169/0.188ms→0.069/0.064/0.059ms，仅为局部查询诊断。最终只保留该等价谓词，候选与投影两处完整检查均保留，未新增RR资格豁免；ANY／proof对象聚合没有稳定额外收益，不引入产品。早期诊断compile及无效昵称fixture失败日志保留，03关闭。
+- 真实SQL新回归覆盖原函数与内联谓词的NULL／自身／不存在账号／双向／解除后真值，使用既有受限`hnuhole_c_runtime`实查SELECT且无UPDATE/TRUNCATE，不扩大grant；函数正文契约检查强制未来策略变更重新审查内联处。READ COMMITTED候选后新屏蔽仍由投影拒绝；RR候选与投影之间双向屏蔽、隐藏、删除、作者改名仍被最终proof重建后交付。
+- 最终组合候选绑定344628c＋本节明确差异：`ultra-memo-blocks-focused-01.log`真实PG `-race` PASS198.337s，含六类逐页／20与50固定SQL／九图编辑／增量／prepared冲突、原会话、代次及ACK丢失；其HTTP包为no tests to run，不冒充HTTP覆盖。`ultra-memo-final-focused-02.log`追加受限角色／策略防漂移／暖memo／正常C/V Snapshot中断继续保留登录等PASS55.891s；`ultra-memo-host-final-02.log`完整go test/build/vet及改动文件gofmt PASS。真实HTTPS12新帖增量另在`ultra-memo-stage-source.log` PASS14.88s（HTTP包28.422s）。`ultra-memo-source-final.json`核对806个API／infra／packages跟踪及新增文件LF／链接内容与Windows最终源码一致。
+- 最后一次同请求诊断`ultra-memo-stage-{diagnostic-344628c,source}.json`各60条：旧端0/60、新端60/60计时有效，故不能作新旧速度对照；所有raw及原守卫保留，不再刷样本。测量时没有并行构建／测试请求，但其他本任务手机fixture每分钟刷新合成证据产生少量fsync；不据此解释时钟异常。新候选40%仍NOT_RUN，交对应head独立Linux CI验收；手机仍NOT_RUN。
+
 ## 阻碍与下一步
 
 此前的暂停及无设备BLOCKED证据保留；vivo旧租约已过期，用户已完成Xiaomi15（serial63005867）的调试授权，随后设备暂时离线，正式设备测量时再核对连接。当前手机25%及布局为NOT_RUN，设备由当前本任务租约协调，不沿用旧vivo授权。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`与本轮契约一致。独立Linux CI已确认小页性能缺口，不能再将其仅标为WSL计时阻碍。
 
-1. 三项硬门槛目前仅SQL通过；接口971候选有效FAIL，新候选待对应head的完整冻结旧版本三轮独立复测；手机NOT_RUN。任务不标记ready或发布。
+1. 三项硬门槛目前仅SQL通过；接口2d＋main 47合成候选有效FAIL，新候选待对应head的完整冻结旧版本三轮独立复测；手机NOT_RUN。任务不标记ready或发布。
 2. 保留所有无效／失败样本和40%门槛，观察同一CI请求阶段定位剩余成本；不调低计时守卫或以页大小缩减代替同页性能。完整原始源码基线及真实 `paging=incremental-v1` 测量保持不变。
-3. Astra Ultra定位与修复完成后，交回GPT-6.1 Sol XHigh独立验收，包括固定设备／网络的25%和图片布局检查；手机使用完整1d／debc／最终候选三版本：1d→最终的25%总收益仍为硬门槛，debc→最终净收益独立报告，不新增第二门槛。
+3. Astra Ultra定位与修复完成后，交回GPT-6.1 Sol XHigh独立验收，包括固定设备／网络的25%和图片布局检查；手机使用完整1d／当前main控制／最终候选三版本：1d→最终的25%总收益仍为硬门槛，main→最终净收益独立报告，不新增第二门槛。main 47的移动端输入与debc一致，可复用已冻结控制APK配47服务端，不能混用旧服务端声称当前主线对照。
 4. 按已有授权推送本任务分支并跟进草稿PR和对应head产品CI。合并及正式部署仍未授权。

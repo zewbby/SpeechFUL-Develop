@@ -68,7 +68,7 @@ func (c *Community) publicListCandidates(ctx context.Context, tx pgx.Tx, account
 	arg := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
 	viewer := arg(account)
 	sql := `/* list:candidates */ SELECT p.post_id FROM c_posts.posts p JOIN c_posts.publication_tasks t ON t.post_id=p.post_id JOIN public.community_identities i ON i.identity_id=t.identity_id
- WHERE p.visibility='PUBLISHED' AND NOT p.moderation_hidden AND NOT c_posts.accounts_blocked(` + viewer + `,p.owner_account_id)
+ WHERE p.visibility='PUBLISHED' AND NOT p.moderation_hidden AND ` + publicListVisibleAuthorSQL(viewer) + `
  AND p.publication_ordinal<=` + arg(p.Ceiling)
 	if q.Kind == PostChannelFeed || q.Kind == PostFeed && q.ID != "" {
 		sql += ` AND p.channel_id=` + arg(q.ID) + `::uuid`
@@ -121,6 +121,17 @@ func (c *Community) publicListCandidates(ctx context.Context, tx pgx.Tx, account
 	return ids, rows.Err()
 }
 
+// Keep the exact symmetric predicate of c_posts.accounts_blocked, but expose
+// the two indexed anti-joins to the bulk query planner. The SQL function's
+// per-row SET search_path boundary otherwise repeats for scanned posts. Both
+// candidates and projection still check fresh rows in their own SQL snapshot;
+// this does not assume a prepared/RR path or reuse an eligibility decision.
+// viewer is an internally generated placeholder, never user-supplied SQL.
+func publicListVisibleAuthorSQL(viewer string) string {
+	return `NOT EXISTS(SELECT 1 FROM c_posts.blocked_authors b WHERE b.account_id=` + viewer + ` AND b.author_account_id=p.owner_account_id)
+ AND NOT EXISTS(SELECT 1 FROM c_posts.blocked_authors b WHERE b.account_id=p.owner_account_id AND b.author_account_id=` + viewer + `)`
+}
+
 func (c *Community) publicListProjection(ctx context.Context, tx pgx.Tx, viewer uuid.UUID, ids []string, q PostQuery) ([]publicListRow, error) {
 	defer readtiming.Span(ctx, "list_projection")()
 	result := make([]publicListRow, 0, len(ids))
@@ -155,7 +166,7 @@ func (c *Community) publicListProjection(ctx context.Context, tx pgx.Tx, viewer 
  JOIN c_posts.attempt_contents x ON x.task_id=t.task_id AND x.version=p.published_attempt_version
  JOIN public.community_identities i ON i.identity_id=t.identity_id JOIN c_auth.accounts a ON a.account_id=p.owner_account_id
  JOIN c_posts.identity_public_labels l ON l.identity_id=i.identity_id`+join+`
- WHERE p.visibility='PUBLISHED' AND NOT p.moderation_hidden AND x.erased_at IS NULL AND NOT c_posts.accounts_blocked($2,p.owner_account_id)
+ WHERE p.visibility='PUBLISHED' AND NOT p.moderation_hidden AND x.erased_at IS NULL AND `+publicListVisibleAuthorSQL("$2")+`
  ORDER BY requested.position`, ids, viewer)
 		if e != nil {
 			return nil, e

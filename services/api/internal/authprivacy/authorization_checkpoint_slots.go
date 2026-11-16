@@ -33,7 +33,7 @@ func checkpointSlotRecord(raw []byte, sequence uint64, key ed25519.PrivateKey) (
 	return record, nil
 }
 
-func decodeCheckpointSlots(f *os.File, public ed25519.PublicKey) (authorizationCheckpointSlots, error) {
+func decodeCheckpointSlots(f *os.File, public ed25519.PublicKey, memo *authorizationSignatureMemo) (authorizationCheckpointSlots, error) {
 	var slots authorizationCheckpointSlots
 	info, err := f.Stat()
 	if err != nil {
@@ -68,8 +68,7 @@ func decodeCheckpointSlots(f *os.File, public ed25519.PublicKey) (authorizationC
 				return slots, errors.New("invalid independent checkpoint slot padding")
 			}
 		}
-		message := append([]byte(authorizationCheckpointWriteMagic), record[:end]...)
-		if !ed25519.Verify(public, message, record[end:]) {
+		if !memo.verifyWithPrefix(public, authorizationCheckpointWriteMagic, record[:end], record[end:]) {
 			return slots, errors.New("invalid independent checkpoint slot signature")
 		}
 		slots.sequence[n], slots.raw[n] = sequence, record[12:12+size]
@@ -84,7 +83,7 @@ func decodeCheckpointSlots(f *os.File, public ed25519.PublicKey) (authorizationC
 	return slots, nil
 }
 
-func readAuthorizationCheckpointSlots(path string, public ed25519.PublicKey) ([]byte, error) {
+func readAuthorizationCheckpointSlots(path string, public ed25519.PublicKey, memo *authorizationSignatureMemo) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -98,7 +97,7 @@ func readAuthorizationCheckpointSlots(path string, public ed25519.PublicKey) ([]
 	if string(header) != authorizationCheckpointWriteMagic {
 		return readAuthorizationCheckpoint(path)
 	}
-	slots, err := decodeCheckpointSlots(f, public)
+	slots, err := decodeCheckpointSlots(f, public, memo)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +112,7 @@ func writeCheckpointSlotsAtomic(path string, record []byte) error {
 	return writeFileAtomic(path, raw)
 }
 
-func writeAuthorizationCheckpointSlots(path string, raw []byte, key ed25519.PrivateKey, business bool) error {
+func writeAuthorizationCheckpointSlots(path string, raw []byte, key ed25519.PrivateKey, business bool, memo *authorizationSignatureMemo) error {
 	f, err := os.OpenFile(path, os.O_RDWR, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		record, err := checkpointSlotRecord(raw, 1, key)
@@ -140,7 +139,7 @@ func writeAuthorizationCheckpointSlots(path string, raw []byte, key ed25519.Priv
 		}
 		return writeCheckpointSlotsAtomic(path, record)
 	}
-	slots, err := decodeCheckpointSlots(f, key.Public().(ed25519.PublicKey))
+	slots, err := decodeCheckpointSlots(f, key.Public().(ed25519.PublicKey), memo)
 	if err != nil {
 		return err
 	}

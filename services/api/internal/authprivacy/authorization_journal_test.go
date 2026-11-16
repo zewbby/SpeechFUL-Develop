@@ -229,7 +229,7 @@ func TestAuthorizationCheckpointProcessesSerialize(t *testing.T) {
 // release and persist a freeze in that case.
 func TestAuthorizationCheckpointRecordTruncationFreezesPostgres(t *testing.T) {
 	c := newGateControl(t)
-	previous, err := readAuthorizationCheckpointSlots(c.gate.anchor.Path, c.gate.anchor.public)
+	previous, err := readAuthorizationCheckpointSlots(c.gate.anchor.Path, c.gate.anchor.public, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestAuthorizationCheckpointRecordTruncationFreezesPostgres(t *testing.T) {
 	if _, err := c.gate.Snapshot(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	current, err := readAuthorizationCheckpointSlots(c.gate.anchor.Path, c.gate.anchor.public)
+	current, err := readAuthorizationCheckpointSlots(c.gate.anchor.Path, c.gate.anchor.public, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

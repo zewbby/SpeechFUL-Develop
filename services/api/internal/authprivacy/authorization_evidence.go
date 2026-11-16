@@ -114,9 +114,10 @@ type signedAuthorizationAnchor struct {
 }
 
 type FileAuthorizationAnchorStore struct {
-	Path   string
-	signer ed25519.PrivateKey
-	public ed25519.PublicKey
+	Path       string
+	signer     ed25519.PrivateKey
+	public     ed25519.PublicKey
+	signatures *authorizationSignatureMemo
 }
 
 func NewFileAuthorizationAnchorStore(path string, key ed25519.PrivateKey) (*FileAuthorizationAnchorStore, error) {
@@ -124,7 +125,7 @@ func NewFileAuthorizationAnchorStore(path string, key ed25519.PrivateKey) (*File
 		return nil, errors.New("invalid independent authorization anchor")
 	}
 	private := append(ed25519.PrivateKey(nil), key...)
-	return &FileAuthorizationAnchorStore{Path: path, signer: private, public: private.Public().(ed25519.PublicKey)}, nil
+	return &FileAuthorizationAnchorStore{Path: path, signer: private, public: private.Public().(ed25519.PublicKey), signatures: &authorizationSignatureMemo{}}, nil
 }
 
 // withLocked serializes all gate instances sharing this anchor, including
@@ -147,7 +148,7 @@ func (s *FileAuthorizationAnchorStore) withLocked(fn func(*authorizationAnchor, 
 }
 
 func (s *FileAuthorizationAnchorStore) readLocked() (authorizationAnchor, bool, error) {
-	raw, err := readAuthorizationCheckpointSlots(s.Path, s.public)
+	raw, err := readAuthorizationCheckpointSlots(s.Path, s.public, s.signatures)
 	if errors.Is(err, os.ErrNotExist) {
 		return authorizationAnchor{}, false, nil
 	}
@@ -159,7 +160,7 @@ func (s *FileAuthorizationAnchorStore) readLocked() (authorizationAnchor, bool, 
 		return authorizationAnchor{}, false, err
 	}
 	message, err := json.Marshal(signed.Anchor)
-	if err != nil || !ed25519.Verify(s.public, message, signed.Signature) {
+	if err != nil || !s.signatures.verify(s.public, message, signed.Signature) {
 		return authorizationAnchor{}, false, errors.New("invalid independent anchor signature")
 	}
 	return signed.Anchor, true, nil
@@ -201,7 +202,7 @@ func (s *FileAuthorizationAnchorStore) writeCheckpointLocked(a authorizationAnch
 	if err != nil {
 		return err
 	}
-	return writeAuthorizationCheckpointSlots(s.Path, raw, s.signer, business)
+	return writeAuthorizationCheckpointSlots(s.Path, raw, s.signer, business, s.signatures)
 }
 
 // Deployment preflight compares the writer format independently of the signed
