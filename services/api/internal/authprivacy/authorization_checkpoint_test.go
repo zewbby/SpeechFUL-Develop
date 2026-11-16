@@ -1,250 +1,300 @@
 package authprivacy
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type checkpointFaultAppender struct {
-	written                           int
-	writeError, syncError, closeError error
-	synced, closed                    bool
+type checkpointCrashConfig struct {
+	DSN, Schema, Domain, Anchor, Evidence, Boundary string
+	AnchorKey, EvidenceKey, RecoveryKey, GlassKey   []byte
+	At                                              time.Time
 }
 
-func (f *checkpointFaultAppender) Write([]byte) (int, error) { return f.written, f.writeError }
-func (f *checkpointFaultAppender) Sync() error               { f.synced = true; return f.syncError }
-func (f *checkpointFaultAppender) Close() error              { f.closed = true; return f.closeError }
-
-func TestAuthorizationCheckpointAppendFailures(t *testing.T) {
-	fault := errors.New("injected checkpoint I/O failure")
-	for _, f := range []*checkpointFaultAppender{
-		{written: 3}, {written: 3, writeError: fault}, {written: 4, syncError: fault}, {written: 4, closeError: fault},
-	} {
-		if err := appendAuthorizationCheckpoint(f, []byte("test")); err == nil || !f.closed {
-			t.Fatal("checkpoint failure acknowledged", f, err)
-		}
-		if f.written != 4 && f.synced {
-			t.Fatal("short write attempted publication")
-		}
+// A real process exits after the signed file is durable, before SQL commits.
+// This helper deliberately does not construct/reset an authlab database.
+func TestGateReadCheckpointCrashChild(t *testing.T) {
+	path := os.Getenv("AUTHLAB_CHECKPOINT_CRASH_CONFIG")
+	if path == "" {
+		return
 	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg checkpointCrashConfig
+	if err = json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	poolConfig, err := pgxpool.ParseConfig(cfg.DSN)
+	if err != nil {
+		t.Fatal("invalid private crash fixture")
+	}
+	poolConfig.ConnConfig.Tracer = &gateCancellationTracer{match: func(sql string) bool {
+		if cfg.Boundary == "commit" {
+			return sql == "commit"
+		}
+		return strings.Contains(sql, "authorization_gate SET trusted_high_watermark=")
+	}, onStart: func(ctx context.Context) context.Context { os.Exit(73); return ctx }}
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	anchor, err := NewFileAuthorizationAnchorStore(cfg.Anchor, ed25519.PrivateKey(cfg.AnchorKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate, err := NewPostgresAuthorizationGate(AuthorizationGateConfig{Pool: pool, Schema: cfg.Schema, Domain: cfg.Domain,
+		Anchor: anchor, Evidence: NewFileAuthorizationEvidenceProvider(cfg.Evidence), EvidencePublicKey: cfg.EvidenceKey,
+		RecoveryPublicKey: cfg.RecoveryKey, BreakGlassPublicKey: cfg.GlassKey, Clock: func() time.Time { return cfg.At }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = gate.Snapshot(context.Background())
+	t.Fatal("crash boundary was not reached")
 }
 
-func checkpointTestStore(t *testing.T) *FileAuthorizationAnchorStore {
+func crashReadCheckpoint(t *testing.T, c *gateControl, boundary string) {
 	t.Helper()
-	_, key, err := ed25519.GenerateKey(rand.Reader)
+	cfg := checkpointCrashConfig{DSN: c.gate.pool.Config().ConnString(), Schema: c.gate.schema, Domain: c.config.Domain,
+		Anchor: c.gate.anchor.Path, Evidence: c.provider.Path, AnchorKey: c.gate.anchor.signer,
+		EvidenceKey: c.config.EvidencePublicKey, RecoveryKey: c.config.RecoveryPublicKey, GlassKey: c.config.BreakGlassPublicKey,
+		At: c.clock.now(), Boundary: boundary}
+	raw, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := NewFileAuthorizationAnchorStore(filepath.Join(t.TempDir(), "anchor"), key)
+	path := filepath.Join(t.TempDir(), "crash.private.json")
+	if err = os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestGateReadCheckpointCrashChild$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "AUTHLAB_CHECKPOINT_CRASH_CONFIG="+path)
+	output, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 73 {
+		t.Fatalf("checkpoint crash fixture failed: %v %s", err, output)
+	}
+}
+
+func checkpointState(t *testing.T, c *gateControl) gateRow {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	tx, err := begin(ctx, c.gate.pool)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return s
-}
-
-func TestAuthorizationCheckpointLegacyUpgradeAndCompaction(t *testing.T) {
-	s := checkpointTestStore(t)
-	a := authorizationAnchor{Domain: "checkpoint-test", Generation: 1, Version: 1, Highwater: time.Now().UTC()}
-	message, _ := json.Marshal(a)
-	legacy, _ := json.Marshal(signedAuthorizationAnchor{Anchor: a, Signature: ed25519.Sign(s.signer, message)})
-	if err := writeFileAtomic(s.Path, legacy); err != nil {
+	defer tx.Rollback(context.Background())
+	row, err := c.gate.readGateRow(ctx, tx)
+	if err != nil {
 		t.Fatal(err)
 	}
-	for n := 0; n < authorizationCheckpointMaxRecords+3; n++ {
-		if err := s.withLocked(func(current *authorizationAnchor, exists bool) error {
-			if !exists || !current.Highwater.Equal(a.Highwater) {
-				t.Fatal("lost checkpoint")
-			}
-			a.Highwater = a.Highwater.Add(time.Microsecond)
-			return s.writeLocked(a)
-		}); err != nil {
-			t.Fatal(err)
-		}
-		info, err := os.Stat(s.Path)
-		if err != nil || info.Size() > int64(len(authorizationCheckpointMagic)+authorizationCheckpointRecordSize*authorizationCheckpointMaxRecords) || info.Mode().Perm() != 0600 {
-			t.Fatal("invalid bounded checkpoint", info, err)
-		}
+	return row
+}
+
+func gateRecoveryCount(t *testing.T, c *gateControl) int {
+	t.Helper()
+	return count(t, c.gate.pool, `SELECT count(*) FROM `+c.gate.schema+`.authorization_gate_audit WHERE event_kind='RECOVER'`)
+}
+
+func assertTemporaryEvidenceRecovers(t *testing.T, c *gateControl) {
+	t.Helper()
+	before, recoveries := checkpointState(t, c), gateRecoveryCount(t, c)
+	if _, err := c.gate.Snapshot(context.Background()); !errors.Is(err, ErrAuthorizationUnavailable) {
+		t.Fatalf("missing/expired evidence permitted work: %v", err)
 	}
-	if err := s.withLocked(func(current *authorizationAnchor, _ bool) error {
-		if !current.Highwater.Equal(a.Highwater) {
-			t.Fatal("compaction changed latest checkpoint")
-		}
-		return nil
-	}); err != nil {
+	if after := checkpointState(t, c); after != before || after.state != "OPEN" {
+		t.Fatalf("temporary evidence failure changed durable authority: before=%+v after=%+v", before, after)
+	}
+	at := c.clock.now()
+	fresh := c.signed(t, c.evidence, uint64(before.generation), uint64(before.version+1), at, at.Add(authorizationEvidenceTTL))
+	if err := c.provider.Store(context.Background(), fresh); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := c.gate.Snapshot(context.Background()); err != nil {
+		t.Fatalf("fresh same-generation evidence required security recovery: %v", err)
+	}
+	if after := checkpointState(t, c); after.generation != before.generation || gateRecoveryCount(t, c) != recoveries {
+		t.Fatal("temporary outage invalidated existing credentials")
 	}
 }
 
-func TestAuthorizationCheckpointRejectsDamagedTail(t *testing.T) {
-	for _, kind := range []string{"short", "extra", "length", "signature", "padding", "header", "oversize"} {
-		t.Run(kind, func(t *testing.T) {
-			s := checkpointTestStore(t)
-			a := authorizationAnchor{Domain: "checkpoint-test", Generation: 1, Version: 1, Highwater: time.Now().UTC()}
-			for n := 0; n < 2; n++ {
-				a.Highwater = a.Highwater.Add(time.Microsecond)
-				if err := s.withLocked(func(*authorizationAnchor, bool) error { return s.writeLocked(a) }); err != nil {
+func TestGateCheckpointCrashPreservesExistingSessionPostgres(t *testing.T) {
+	for _, boundary := range []string{"update", "commit", "repeated"} {
+		t.Run(boundary, func(t *testing.T) {
+			gateCancellationParties(t, func(t *testing.T, c *gateControl) {
+				ctx := context.Background()
+				var session SignupResult
+				if c.gate.schema == "c_auth" {
+					session = sessionTestAccount(t, c.lab, "checkpoint_user")
+				}
+				if _, err := c.gate.Snapshot(ctx); err != nil {
 					t.Fatal(err)
 				}
-			}
-			raw, err := os.ReadFile(s.Path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			start := len(raw) - authorizationCheckpointRecordSize
-			switch kind {
-			case "short":
-				raw = raw[:len(raw)-1]
-			case "extra":
-				raw = append(raw, 0)
-			case "length":
-				raw[start] = 255
-			case "signature":
-				i := bytes.Index(raw[start:], []byte(`"signature":"`))
-				if i < 0 {
-					t.Fatal("missing signature")
+				before, recoveries := checkpointState(t, c), gateRecoveryCount(t, c)
+				c.clock.set(c.clock.now().Add(time.Second))
+				first := boundary
+				if first == "repeated" {
+					first = "update"
 				}
-				raw[start+i+len(`"signature":"`)] ^= 1
-			case "padding":
-				raw[len(raw)-1] = 1
-			case "header":
-				raw[0] ^= 1
-			case "oversize":
-				raw = append(raw, make([]byte, authorizationCheckpointRecordSize*authorizationCheckpointMaxRecords)...)
+				crashReadCheckpoint(t, c, first)
+				if boundary == "repeated" {
+					// Crash again after replay and a second read advance, so both
+					// SQL updates roll back together to the original predecessor.
+					c.clock.set(c.clock.now().Add(time.Second))
+					crashReadCheckpoint(t, c, "commit")
+				}
+				if row := checkpointState(t, c); row != before {
+					t.Fatalf("killed process committed SQL unexpectedly: %+v", row)
+				}
+				restarted, err := NewPostgresAuthorizationGate(c.config)
+				if err != nil {
+					t.Fatal(err)
+				}
+				c.gate = restarted
+				if _, err = restarted.Snapshot(ctx); err != nil {
+					t.Fatalf("provable read-only interruption did not resume: %v", err)
+				}
+				assertGateCheckpointOpen(t, c)
+				if checkpointState(t, c).generation != before.generation || gateRecoveryCount(t, c) != recoveries {
+					t.Fatal("ordinary continuation changed security generation")
+				}
+				if c.gate.schema == "c_auth" {
+					c.lab.c.gate = restarted
+					if _, err = c.lab.c.GetCurrentSession(ctx, session.SessionToken); err != nil {
+						t.Fatalf("already logged-in account was forced to log in again: %v", err)
+					}
+				}
+			})
+		})
+	}
+}
+
+func TestGateCheckpointCannotHideBusinessRollbackPostgres(t *testing.T) {
+	gateCancellationParties(t, func(t *testing.T, c *gateControl) {
+		ctx := context.Background()
+		decision, err := c.gate.Snapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before := checkpointState(t, c)
+		gateCancellationProbe(t, c)
+		tx, err := begin(ctx, c.gate.pool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.gate.Abort(ctx, tx)
+		if _, err = tx.Exec(ctx, `UPDATE public.gate_cancellation_probe SET value=1`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = c.gate.CommitAuthorized(ctx, tx, decision.Generation); err != nil {
+			t.Fatal(err)
+		}
+		after := checkpointState(t, c)
+		if after.checkpoint == before.checkpoint || !after.highwater.Equal(before.highwater) || after.version != before.version {
+			t.Fatal("every business commit needs a distinct ID even when time/evidence do not change")
+		}
+		// Restore the last SQL checkpoint and business value while keeping the
+		// independent committed anchor. An old snapshot must not be accepted.
+		if _, err = c.gate.pool.Exec(ctx, `UPDATE `+c.gate.schema+`.authorization_gate SET checkpoint_id=$1`, before.checkpoint); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = c.gate.pool.Exec(ctx, `UPDATE public.gate_cancellation_probe SET value=0`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = c.gate.Snapshot(ctx); !errors.Is(err, ErrAuthorizationUnavailable) {
+			t.Fatal("automatic read continuation accepted lost business data")
+		}
+		if checkpointState(t, c).state != "FROZEN" {
+			t.Fatal("business rollback did not freeze durably")
+		}
+	})
+}
+
+func TestGateReadReceiptRejectsWrongPredecessorAndFrozenPostgres(t *testing.T) {
+	for _, fault := range []string{"wrong_predecessor", "explicit_freeze"} {
+		t.Run(fault, func(t *testing.T) {
+			gateCancellationParties(t, func(t *testing.T, c *gateControl) {
+				ctx := context.Background()
+				if _, err := c.gate.Snapshot(ctx); err != nil {
+					t.Fatal(err)
+				}
+				c.clock.set(c.clock.now().Add(time.Second))
+				crashReadCheckpoint(t, c, "update")
+				if fault == "wrong_predecessor" {
+					if _, err := c.gate.pool.Exec(ctx, `UPDATE `+c.gate.schema+`.authorization_gate SET checkpoint_id=$1`, uuid.NewString()); err != nil {
+						t.Fatal(err)
+					}
+				} else if err := c.gate.Freeze(ctx, "explicit security event"); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := c.gate.Snapshot(ctx); !errors.Is(err, ErrAuthorizationUnavailable) {
+					t.Fatal("read receipt authorized an unproven predecessor or reopened a frozen Gate")
+				}
+				if checkpointState(t, c).state != "FROZEN" {
+					t.Fatal("rejected continuation did not remain frozen")
+				}
+			})
+		})
+	}
+}
+
+func TestGateTemporaryEvidenceOutagePreservesSessionPostgres(t *testing.T) {
+	for _, fault := range []string{"missing", "expired"} {
+		t.Run(fault, func(t *testing.T) {
+			c := newGateControl(t)
+			session := sessionTestAccount(t, c.lab, "outage_login_user")
+			if fault == "missing" {
+				if err := os.Remove(c.provider.Path); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				c.clock.set(c.clock.now().Add(authorizationEvidenceTTL + time.Second))
 			}
-			if err := os.WriteFile(s.Path, raw, 0600); err != nil {
-				t.Fatal(err)
+			if _, err := c.lab.c.GetCurrentSession(context.Background(), session.SessionToken); !errors.Is(err, ErrAuthorizationUnavailable) {
+				t.Fatalf("unavailable evidence did not stop protected reads: %v", err)
 			}
-			called := false
-			if err := s.withLocked(func(*authorizationAnchor, bool) error { called = true; return nil }); err == nil || called {
-				t.Fatal("damaged tail fell back to previous checkpoint")
+			assertTemporaryEvidenceRecovers(t, c)
+			if _, err := c.lab.c.GetCurrentSession(context.Background(), session.SessionToken); err != nil {
+				t.Fatalf("temporary provider outage invalidated the existing login: %v", err)
 			}
 		})
 	}
 }
 
-func TestAuthorizationCheckpointInstancesSerialize(t *testing.T) {
-	s := checkpointTestStore(t)
-	a := authorizationAnchor{Domain: "checkpoint-test", Generation: 1, Version: 1, Highwater: time.Now().UTC()}
-	if err := s.withLocked(func(*authorizationAnchor, bool) error { return s.writeLocked(a) }); err != nil {
-		t.Fatal(err)
-	}
-	var wg sync.WaitGroup
-	errors := make(chan error, 4)
-	for n := 0; n < 4; n++ {
-		other, err := NewFileAuthorizationAnchorStore(s.Path, s.signer)
-		if err != nil {
+func TestGateLegacyCheckpointUpgradePreservesGenerationPostgres(t *testing.T) {
+	gateCancellationParties(t, func(t *testing.T, c *gateControl) {
+		ctx := context.Background()
+		before, recoveries := checkpointState(t, c), gateRecoveryCount(t, c)
+		// Model the exact legacy material during an additive schema upgrade.
+		if _, err := c.gate.pool.Exec(ctx, `UPDATE `+c.gate.schema+`.authorization_gate SET checkpoint_id=NULL`); err != nil {
 			t.Fatal(err)
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for n := 0; n < 40; n++ {
-				if err := other.withLocked(func(current *authorizationAnchor, _ bool) error {
-					current.Version++
-					return other.writeLocked(*current)
-				}); err != nil {
-					errors <- err
-					return
-				}
-			}
-		}()
-	}
-	wg.Wait()
-	close(errors)
-	for err := range errors {
-		t.Fatal(err)
-	}
-	if err := s.withLocked(func(current *authorizationAnchor, _ bool) error {
-		if current.Version != 161 {
-			t.Fatal("lost concurrent checkpoint", current.Version)
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestAuthorizationCheckpointProcessesSerialize(t *testing.T) {
-	if os.Getenv("REQ002_CHECKPOINT_CHILD") == "1" {
-		key, err := hex.DecodeString(os.Getenv("REQ002_CHECKPOINT_TEST_KEY"))
-		if err != nil {
+		if err := c.gate.anchor.withLocked(func(a *authorizationAnchor, exists bool) error {
+			a.CheckpointID, a.ReadAdvance = "", nil
+			return c.gate.anchor.writeLocked(*a)
+		}); err != nil {
 			t.Fatal(err)
 		}
-		s, err := NewFileAuthorizationAnchorStore(os.Getenv("REQ002_CHECKPOINT_TEST_PATH"), key)
-		if err != nil {
-			t.Fatal(err)
+		if _, err := c.gate.Snapshot(ctx); err != nil {
+			t.Fatalf("matching legacy material could not upgrade in place: %v", err)
 		}
-		for n := 0; n < 40; n++ {
-			if err = s.withLocked(func(current *authorizationAnchor, _ bool) error {
-				current.Version++
-				return s.writeLocked(*current)
-			}); err != nil {
-				t.Fatal(err)
-			}
+		after := checkpointState(t, c)
+		if after.checkpoint == "" || after.generation != before.generation || gateRecoveryCount(t, c) != recoveries {
+			t.Fatal("additive checkpoint upgrade required login revocation")
 		}
-		return
-	}
-	s := checkpointTestStore(t)
-	a := authorizationAnchor{Domain: "checkpoint-process-test", Generation: 1, Version: 1, Highwater: time.Now().UTC()}
-	if err := s.withLocked(func(*authorizationAnchor, bool) error { return s.writeLocked(a) }); err != nil {
-		t.Fatal(err)
-	}
-	commands := []*exec.Cmd{}
-	for n := 0; n < 4; n++ {
-		cmd := exec.Command(os.Args[0], "-test.run=^TestAuthorizationCheckpointProcessesSerialize$")
-		cmd.Env = append(os.Environ(), "REQ002_CHECKPOINT_CHILD=1", "REQ002_CHECKPOINT_TEST_KEY="+hex.EncodeToString(s.signer), "REQ002_CHECKPOINT_TEST_PATH="+s.Path)
-		if err := cmd.Start(); err != nil {
-			t.Fatal(err)
-		}
-		commands = append(commands, cmd)
-	}
-	for _, cmd := range commands {
-		if err := cmd.Wait(); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := s.withLocked(func(current *authorizationAnchor, _ bool) error {
-		if current.Version != 161 {
-			t.Fatal("lost cross-process checkpoint", current.Version)
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// Truncation at an exact record boundary leaves a valid older signature. The
-// independent SQL/checkpoint equality check, never a signature alone, must stop
-// release and persist a freeze in that case.
-func TestAuthorizationCheckpointRecordTruncationFreezesPostgres(t *testing.T) {
-	c := newGateControl(t)
-	c.clock.set(c.clock.now().Add(time.Second))
-	if _, err := c.gate.Snapshot(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	info, err := os.Stat(c.gate.anchor.Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.Truncate(c.gate.anchor.Path, info.Size()-authorizationCheckpointRecordSize); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = c.gate.Snapshot(context.Background()); err == nil {
-		t.Fatal("accepted truncated checkpoint")
-	}
-	var state string
-	if err = c.lab.cp.QueryRow(context.Background(), `SELECT gate_state FROM c_auth.authorization_gate WHERE singleton_id=1`).Scan(&state); err != nil || state != "FROZEN" {
-		t.Fatal("freeze not persistent", state, err)
-	}
+	})
 }
