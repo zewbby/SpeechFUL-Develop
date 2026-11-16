@@ -165,15 +165,16 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def overlay_observation(old, new, paths=OVERLAY):
+def overlay_observation(old, new, paths=OVERLAY, instrumentation=None):
     if len(set(paths)) != len(paths) or any(path not in OVERLAY for path in paths):
         raise ComparisonError("overlay_not_whitelisted")
     records = []
     for relative in paths:
-        source, target = new / relative, old / relative
+        origin = instrumentation if instrumentation is not None and relative in INSTRUMENTATION_SHA256 else new
+        source, target = origin / relative, old / relative
         if source.is_symlink() or not source.is_file() or target.is_symlink():
             raise ComparisonError("overlay_requires_regular_files")
-        if not inside(source.resolve(), new.resolve()) or not inside(target.resolve(), old.resolve()):
+        if not inside(source.resolve(), origin.resolve()) or not inside(target.resolve(), old.resolve()):
             raise ComparisonError("overlay_escape")
         if relative in INSTRUMENTATION_SHA256 and digest(source) != INSTRUMENTATION_SHA256[relative]:
             raise ComparisonError("instrumentation_content_not_frozen")
@@ -181,7 +182,7 @@ def overlay_observation(old, new, paths=OVERLAY):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
         target.chmod(0o600)
-        records.append({"path": relative, "baselineSHA256": before, "headSHA256": digest(source), "appliedSHA256": digest(target)})
+        records.append({"path": relative, "baselineSHA256": before, "headSHA256": digest(new / relative), "appliedSHA256": digest(target)})
     return records
 
 
@@ -503,7 +504,9 @@ def run(args):
         archive_tree(source, BASELINE, old, private/"old.tar")
         archive_tree(source, head, new, private/"new.tar")
         summary["phase"] = "observation_overlay"
-        overlay = overlay_observation(old, new)
+        instrumentation = private/"instrumentation"
+        archive_tree(source, INSTRUMENTATION_COMMIT, instrumentation, private/"instrumentation.tar")
+        overlay = overlay_observation(old, new, instrumentation=instrumentation)
         manifest = {"headCommit": head, "baselineProductCommit": BASELINE, "baselineOverlay": overlay, "overlayWhitelist": list(OVERLAY),
                     "oldTreeFiles": tree_hashes(old), "newTreeFiles": tree_hashes(new), "declaredProfiles": profiles(),
                     "configuration": {"poolMaxConns":12,"goMaxProcs":4,"posts":20,"commentPageSize":50,"feedPageSize":20,
