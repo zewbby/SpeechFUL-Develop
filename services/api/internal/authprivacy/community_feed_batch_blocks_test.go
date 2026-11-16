@@ -110,7 +110,7 @@ func TestFeedBatchProjectionFreshBlocksPostgres(t *testing.T) {
 				a, b = b, a
 			}
 			mustExec(t, l.cp, `INSERT INTO c_posts.blocked_authors(block_id,account_id,author_account_id,author_state,nickname,avatar,short_code,created_at) VALUES($1,$2,$3,'ACTIVE','test','default-v1','T',now())`, uuid.New(), a, b)
-			rows, e := l.c.publicListProjection(ctx, tx, reader.AccountID, ids, q)
+			rows, e := l.c.publicListProjection(ctx, tx, reader.AccountID, ids, q, nil)
 			if !errors.Is(e, pgx.ErrNoRows) || len(rows) != 0 {
 				t.Fatal("projection reused stale eligibility", rows, e)
 			}

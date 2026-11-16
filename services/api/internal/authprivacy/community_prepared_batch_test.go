@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -512,5 +513,154 @@ func TestPreparedBatchErrorObservationPostgres(t *testing.T) {
 		if scanErr == nil || closeErr == nil || len(errorsSeen) != 1 || errorsSeen[0] != failure.code {
 			t.Fatal("batch SQL failure missing or counted twice", failure.code, errorsSeen, scanErr, closeErr)
 		}
+	}
+}
+
+// Count statements from both protocols. Geometry must begin after the entire
+// projection/proof batch closes; the returned proof remains fresh on both sides.
+type preparedProjectionTracer struct {
+	open, body, proof, counts int
+	geometryDuringBatch       bool
+}
+
+func (q *preparedProjectionTracer) record(sql string) {
+	if strings.HasPrefix(sql, "/* list:") {
+		q.body++
+	}
+	if sql == feedReadVersionsSQL {
+		q.proof++
+	}
+	if sql == preparedViewCountsSQL {
+		q.counts++
+	}
+	if strings.HasPrefix(sql, "/* list:images */") && q.open != 0 {
+		q.geometryDuringBatch = true
+	}
+}
+func (q *preparedProjectionTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, d pgx.TraceQueryStartData) context.Context {
+	q.record(d.SQL)
+	return ctx
+}
+func (*preparedProjectionTracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+func (q *preparedProjectionTracer) TraceBatchStart(ctx context.Context, _ *pgx.Conn, _ pgx.TraceBatchStartData) context.Context {
+	q.open++
+	return ctx
+}
+func (q *preparedProjectionTracer) TraceBatchQuery(_ context.Context, _ *pgx.Conn, d pgx.TraceBatchQueryData) {
+	q.record(d.SQL)
+}
+func (q *preparedProjectionTracer) TraceBatchEnd(context.Context, *pgx.Conn, pgx.TraceBatchEndData) {
+	q.open--
+}
+
+func checkNativePreparedProjection(t *testing.T, l *lab, bearer [32]byte, limit, body int) any {
+	t.Helper()
+	ctx := context.Background()
+	tracer := &preparedProjectionTracer{}
+	cfg := l.cp.Config()
+	cfg.ConnConfig.Tracer = tracer
+	pool, e := pgxpool.NewWithConfig(ctx, cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer pool.Close()
+	clone := *l.c
+	clone.pool = pool
+	clone.posts.preparedFeedReads = true
+	traced, spans := readtiming.Start(ctx)
+	result, e := clone.ReadPosts(traced, bearer, PostQuery{Kind: PostFeed, Limit: limit, ImageSizes: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if tracer.body != body || tracer.proof != 2 || tracer.counts != 1 || tracer.open != 0 || tracer.geometryDuringBatch || spans.Snapshot().Stages["feed.list_proof"].Calls != 2 || spans.Snapshot().Stages["feed.anchor_write"].Calls != 1 {
+		t.Fatalf("native prepared SQL / batch boundary: %+v", tracer)
+	}
+	t.Logf("native prepared limit%d: %d body + 2 fresh proof + 1 final counts; one checkpoint", limit, tracer.body)
+	return result.Value
+}
+
+func TestFeedPreparedProjectionBatchFailurePostgres(t *testing.T) {
+	l := preparedFeedLab(t)
+	ctx := context.Background()
+	owner := sessionTestAccount(t, l, "projection_failure")
+	identity := identityChange(t, l.c, owner.SessionToken, "CREATE", uuid.Nil, "projection").IdentityID
+	id := preparedFeedPublish(t, l, owner.SessionToken, identity, "body")
+	cfg := l.cp.Config()
+	cfg.MaxConns = 1
+	cfg.MinConns = 0
+	pool, e := pgxpool.NewWithConfig(ctx, cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer pool.Close()
+	for _, fault := range []string{"close", "cancel-proof"} {
+		t.Run(fault, func(t *testing.T) {
+			tx, e := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer tx.Rollback(ctx)
+			proof := &feedReadProof{ids: []string{id}, initial: true}
+			q := PostQuery{Kind: PostFeed, Limit: 5, deferViewCounts: true}
+			if fault == "close" {
+				_, e = l.c.publicListProjection(ctx, preparedBatchCloseFailure{tx}, owner.AccountID, []string{id}, q, proof)
+			} else {
+				blocker, be := l.cp.Begin(ctx)
+				if be != nil {
+					t.Fatal(be)
+				}
+				defer blocker.Rollback(ctx)
+				if _, be = blocker.Exec(ctx, `LOCK TABLE c_posts.read_feed_post_versions IN ACCESS EXCLUSIVE MODE`); be != nil {
+					t.Fatal(be)
+				}
+				pid := tx.Conn().PgConn().PID()
+				request, cancel := context.WithCancel(ctx)
+				defer cancel()
+				done := make(chan error, 1)
+				go func() {
+					_, failure := l.c.publicListProjection(request, tx, owner.AccountID, []string{id}, q, proof)
+					done <- failure
+				}()
+				waiting := false
+				deadline := time.Now().Add(2 * time.Second)
+				for time.Now().Before(deadline) {
+					if be = l.cp.QueryRow(ctx, `SELECT coalesce(wait_event_type='Lock',false) FROM pg_stat_activity WHERE pid=$1`, pid).Scan(&waiting); be != nil {
+						t.Fatal(be)
+					}
+					if waiting {
+						break
+					}
+					time.Sleep(time.Millisecond)
+				}
+				if !waiting {
+					t.Fatal("proof never blocked")
+				}
+				cancel()
+				select {
+				case e = <-done:
+				case <-time.After(3 * time.Second):
+					t.Fatal("projection/proof batch did not drain")
+				}
+				_ = blocker.Rollback(ctx)
+			}
+			if e == nil || proof.prepared {
+				t.Fatal("failed batch published a prepared proof", e)
+			}
+			_ = tx.Rollback(ctx)
+			reuse, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+			conn, e := pool.Acquire(reuse)
+			if e != nil {
+				t.Fatal("projection batch retained lease", e)
+			}
+			defer conn.Release()
+			var one int
+			if conn.Conn().PgConn().TxStatus() != 'I' {
+				t.Fatal("leaked transaction")
+			}
+			if e = conn.QueryRow(reuse, `SELECT 1`).Scan(&one); e != nil || one != 1 {
+				t.Fatal("pool not reusable", e)
+			}
+		})
 	}
 }

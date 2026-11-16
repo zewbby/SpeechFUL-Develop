@@ -370,3 +370,21 @@ func TestAuthorizationCheckpointPartialPublicationPostgres(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthorizationCheckpointZeroPaddingEveryByte(t *testing.T) {
+	for _, size := range []int{0, 1, 31, 32, 33, authorizationCheckpointHeaderSize, authorizationCheckpointRecordSize} {
+		b := make([]byte, size)
+		if !checkpointZeroPadding(b) {
+			t.Fatal("zero padding rejected", size)
+		}
+		for i := range b {
+			for _, value := range []byte{1, 128, 255} {
+				b[i] = value
+				if checkpointZeroPadding(b) {
+					t.Fatal("nonzero padding accepted", size, i, value)
+				}
+			}
+			b[i] = 0
+		}
+	}
+}

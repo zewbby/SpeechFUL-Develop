@@ -57,6 +57,13 @@ func TestFeedBatchNineImagesAndEditedOrderPostgres(t *testing.T) {
 		if !reflect.DeepEqual(comparableList(t, a), comparableList(t, b)) || counter.queries > 4 {
 			t.Fatal("image geometry mismatch or query growth", counter.queries)
 		}
+		if e = tx.Rollback(context.Background()); e != nil {
+			t.Fatal(e)
+		}
+		native := checkNativePreparedProjection(t, l, owner.SessionToken, 20, counter.queries)
+		if !reflect.DeepEqual(comparableList(t, a), comparableList(t, native)) {
+			t.Fatal("native prepared geometry changed")
+		}
 	}
 	compare()
 	var imageIDs []string
@@ -327,6 +334,15 @@ func TestFeedBatchSixListsPostgres(t *testing.T) {
 				q.Cursor = *next
 			}
 			t.Logf("PASS frozen equivalence %s page size %d", kind, size)
+		}
+	}
+	if e = tx.Rollback(ctx); e != nil {
+		t.Fatal(e)
+	}
+	for _, size := range []int{20, 50} {
+		page := checkNativePreparedProjection(t, l, owner.SessionToken, size, 3).(posts.CrossChannelFeedPage)
+		if len(page.Items) != size || page.NextCursor == nil {
+			t.Fatal("native prepared page/lookahead changed", size)
 		}
 	}
 }

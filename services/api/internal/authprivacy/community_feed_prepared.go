@@ -18,6 +18,7 @@ type feedReadProof struct {
 	initial  bool
 	ids      []string
 	versions []byte
+	prepared bool // Complete fresh proof read with the projection in this plan only.
 }
 
 // Each fact has an unambiguous 36-byte representation: kind (4), UUID (16),
@@ -78,11 +79,21 @@ func (c *Community) readPreparedFeed(ctx context.Context, bearer [32]byte, q Pos
 	return c.withPreparedReadPlan(ctx, bearer, postError("SERVICE_UNAVAILABLE", 503), func(prepareCtx context.Context, tx pgx.Tx, s readSubject) (*preparedReadPlan, error) {
 		proof := &feedReadProof{channel: q.ID, initial: q.Cursor == ""}
 		var position posts.CursorPosition
-		value, pending := c.listPublicPostsCaptured(prepareCtx, tx, s.account, q, s.decision.TrustedAt, func(p posts.CursorPosition, ids []string) { position = p; proof.ids = append([]string{}, ids...) })
-		var e error
-		proof.versions, e = proof.read(prepareCtx, tx, s.account)
-		if e != nil {
-			pending = e
+		capture := func(p posts.CursorPosition, ids []string) { position = p; proof.ids = append([]string{}, ids...) }
+		var value any
+		var pending error
+		if c.posts.batchListReads {
+			value, pending = c.listPublicPostsBatchWithProof(prepareCtx, tx, s.account, q, s.decision.TrustedAt, capture, proof)
+		} else {
+			value, pending = c.listPublicPostsCaptured(prepareCtx, tx, s.account, q, s.decision.TrustedAt, capture)
+		}
+		// Empty/error pages and the legacy path still need a complete fresh proof.
+		if !proof.prepared {
+			var e error
+			proof.versions, e = proof.read(prepareCtx, tx, s.account)
+			if e != nil {
+				pending = e
+			}
 		}
 		var finalViews map[string]int64
 		var pageIDs []string

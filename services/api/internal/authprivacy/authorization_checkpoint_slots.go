@@ -33,6 +33,12 @@ func checkpointSlotRecord(raw []byte, sequence uint64, key ed25519.PrivateKey) (
 	return record, nil
 }
 
+// Count examines every byte using the standard library's optimized primitive.
+// Empty padding is valid; one nonzero byte anywhere must still be rejected.
+func checkpointZeroPadding(p []byte) bool {
+	return bytes.Count(p, []byte{0}) == len(p)
+}
+
 func decodeCheckpointSlots(f *os.File, public ed25519.PublicKey, memo *authorizationSignatureMemo) (authorizationCheckpointSlots, error) {
 	var slots authorizationCheckpointSlots
 	info, err := f.Stat()
@@ -49,10 +55,8 @@ func decodeCheckpointSlots(f *os.File, public ed25519.PublicKey, memo *authoriza
 	if string(raw[:len(authorizationCheckpointWriteMagic)]) != authorizationCheckpointWriteMagic {
 		return slots, errors.New("invalid independent checkpoint slots header")
 	}
-	for _, v := range raw[len(authorizationCheckpointWriteMagic):authorizationCheckpointHeaderSize] {
-		if v != 0 {
-			return slots, errors.New("invalid independent checkpoint header padding")
-		}
+	if !checkpointZeroPadding(raw[len(authorizationCheckpointWriteMagic):authorizationCheckpointHeaderSize]) {
+		return slots, errors.New("invalid independent checkpoint header padding")
 	}
 	for n := 0; n < 2; n++ {
 		start := authorizationCheckpointHeaderSize + n*authorizationCheckpointRecordSize
@@ -63,10 +67,8 @@ func decodeCheckpointSlots(f *os.File, public ed25519.PublicKey, memo *authoriza
 		if sequence == 0 || size <= 0 || size > authorizationCheckpointJSONLimit {
 			return slots, errors.New("invalid independent checkpoint slot metadata")
 		}
-		for _, v := range record[12+size : end] {
-			if v != 0 {
-				return slots, errors.New("invalid independent checkpoint slot padding")
-			}
+		if !checkpointZeroPadding(record[12+size : end]) {
+			return slots, errors.New("invalid independent checkpoint slot padding")
 		}
 		if !memo.verifyWithPrefix(public, authorizationCheckpointWriteMagic, record[:end], record[end:]) {
 			return slots, errors.New("invalid independent checkpoint slot signature")

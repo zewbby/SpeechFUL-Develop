@@ -132,7 +132,7 @@ func publicListVisibleAuthorSQL(viewer string) string {
  AND NOT EXISTS(SELECT 1 FROM c_posts.blocked_authors b WHERE b.account_id=p.owner_account_id AND b.author_account_id=` + viewer + `)`
 }
 
-func (c *Community) publicListProjection(ctx context.Context, tx pgx.Tx, viewer uuid.UUID, ids []string, q PostQuery) ([]publicListRow, error) {
+func (c *Community) publicListProjection(ctx context.Context, tx pgx.Tx, viewer uuid.UUID, ids []string, q PostQuery, proof *feedReadProof) ([]publicListRow, error) {
 	defer readtiming.Span(ctx, "list_projection")()
 	result := make([]publicListRow, 0, len(ids))
 	if len(ids) == 0 {
@@ -159,42 +159,80 @@ func (c *Community) publicListProjection(ctx context.Context, tx pgx.Tx, viewer 
 			views = `coalesce(v.view_count,0)`
 			join = ` LEFT JOIN c_posts.post_view_totals v ON v.post_id=p.post_id`
 		}
-		rows, e := tx.Query(ctx, `/* list:projection */ SELECT p.post_id,p.channel_id,coalesce(p.edited_title,x.title),coalesce(p.edited_body,x.body),p.published_at,p.publication_ordinal,
- a.state,i.deleted_at,i.nickname,i.avatar,l.short_code,coalesce(cardinality(p.edited_image_ids),x.image_count,0),p.edited_at,p.edited_image_ids IS NOT NULL,p.tags,`+views+`
+		projectionSQL := `/* list:projection */ SELECT p.post_id,p.channel_id,coalesce(p.edited_title,x.title),coalesce(p.edited_body,x.body),p.published_at,p.publication_ordinal,
+ a.state,i.deleted_at,i.nickname,i.avatar,l.short_code,coalesce(cardinality(p.edited_image_ids),x.image_count,0),p.edited_at,p.edited_image_ids IS NOT NULL,p.tags,` + views + `
  FROM unnest($1::uuid[]) WITH ORDINALITY requested(id,position)
  JOIN c_posts.posts p ON p.post_id=requested.id JOIN c_posts.publication_tasks t ON t.post_id=p.post_id
  JOIN c_posts.attempt_contents x ON x.task_id=t.task_id AND x.version=p.published_attempt_version
  JOIN public.community_identities i ON i.identity_id=t.identity_id JOIN c_auth.accounts a ON a.account_id=p.owner_account_id
- JOIN c_posts.identity_public_labels l ON l.identity_id=i.identity_id`+join+`
- WHERE p.visibility='PUBLISHED' AND NOT p.moderation_hidden AND x.erased_at IS NULL AND `+publicListVisibleAuthorSQL("$2")+`
- ORDER BY requested.position`, ids, viewer)
-		if e != nil {
-			return nil, e
-		}
-		for rows.Next() {
-			var row publicListRow
-			var state, short string
-			var deleted *time.Time
-			var name, avatar *string
-			p := &row.post
-			if e = rows.Scan(&p.PostID, &p.ChannelID, &p.Title, &p.Body, &p.PublishedAt, &row.ordinal, &state, &deleted, &name, &avatar, &short, &p.ImageCount, &p.EditedAt, &p.ImagesEdited, &p.Tags, &p.ViewCount); e != nil {
-				rows.Close()
-				return nil, e
+ JOIN c_posts.identity_public_labels l ON l.identity_id=i.identity_id` + join + `
+ WHERE p.visibility='PUBLISHED' AND NOT p.moderation_hidden AND x.erased_at IS NULL AND ` + publicListVisibleAuthorSQL("$2") + `
+ ORDER BY requested.position`
+		e := func() (err error) {
+			var batch pgx.BatchResults
+			var rows pgx.Rows
+			if proof != nil {
+				// Both SELECTs use this already-bound native preparation's RR snapshot.
+				// Queue all candidate IDs (including lookahead), not just displayed IDs.
+				commands := &pgx.Batch{}
+				commands.Queue(projectionSQL, ids, viewer)
+				commands.Queue(feedReadVersionsSQL, viewer, proof.ids, nullablePostID(proof.channel), proof.initial)
+				batch = tx.SendBatch(ctx, commands)
+				defer func() {
+					if e := batch.Close(); e != nil {
+						err = e
+					}
+				}()
+				rows, err = batch.Query()
+			} else {
+				rows, err = tx.Query(ctx, projectionSQL, ids, viewer)
 			}
-			p.Author, e = projectPublicPostAuthor(state, deleted, name, avatar, short)
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			var e error
+			for rows.Next() {
+				var row publicListRow
+				var state, short string
+				var deleted *time.Time
+				var name, avatar *string
+				p := &row.post
+				if e = rows.Scan(&p.PostID, &p.ChannelID, &p.Title, &p.Body, &p.PublishedAt, &row.ordinal, &state, &deleted, &name, &avatar, &short, &p.ImageCount, &p.EditedAt, &p.ImagesEdited, &p.Tags, &p.ViewCount); e != nil {
+					rows.Close()
+					return e
+				}
+				p.Author, e = projectPublicPostAuthor(state, deleted, name, avatar, short)
+				if e != nil {
+					rows.Close()
+					return e
+				}
+				p.PublishedAt = p.PublishedAt.UTC()
+				if p.EditedAt != nil {
+					at := p.EditedAt.UTC()
+					p.EditedAt = &at
+				}
+				result = append(result, row)
+			}
+			e = rows.Err()
+			rows.Close()
 			if e != nil {
-				rows.Close()
-				return nil, e
+				return e
 			}
-			p.PublishedAt = p.PublishedAt.UTC()
-			if p.EditedAt != nil {
-				at := p.EditedAt.UTC()
-				p.EditedAt = &at
+			if proof != nil {
+				finish := readtiming.Span(ctx, "list_proof")
+				material, e := scanFeedReadProof(batch.QueryRow())
+				finish()
+				if e != nil {
+					return e
+				}
+				if e = batch.Close(); e != nil {
+					return e
+				}
+				proof.versions, proof.prepared = material, true
 			}
-			result = append(result, row)
-		}
-		e = rows.Err()
-		rows.Close()
+			return nil
+		}()
 		if e != nil {
 			return nil, e
 		}
@@ -256,6 +294,11 @@ func readPublicListImageSizes(ctx context.Context, tx pgx.Tx, ids []string) (map
 }
 
 func (c *Community) listPublicPostsBatchCaptured(ctx context.Context, tx pgx.Tx, account uuid.UUID, q PostQuery, at time.Time, capture func(posts.CursorPosition, []string)) (any, error) {
+	return c.listPublicPostsBatchWithProof(ctx, tx, account, q, at, capture, nil)
+}
+
+// proof is supplied only by native RR prepared feed reads, after subject validation.
+func (c *Community) listPublicPostsBatchWithProof(ctx context.Context, tx pgx.Tx, account uuid.UUID, q PostQuery, at time.Time, capture func(posts.CursorPosition, []string), proof *feedReadProof) (any, error) {
 	p, blocked, e := c.publicListPosition(ctx, tx, account, q, at)
 	if e != nil {
 		return nil, e
@@ -283,7 +326,7 @@ func (c *Community) listPublicPostsBatchCaptured(ctx context.Context, tx pgx.Tx,
 	if more {
 		pageIDs = pageIDs[:q.Limit]
 	}
-	entries, e := c.publicListProjection(ctx, tx, account, pageIDs, q)
+	entries, e := c.publicListProjection(ctx, tx, account, pageIDs, q, proof)
 	if e != nil {
 		return nil, e
 	}

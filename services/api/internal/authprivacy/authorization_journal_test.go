@@ -87,7 +87,7 @@ func TestAuthorizationCheckpointLegacyUpgradeAndAtomicPublication(t *testing.T) 
 }
 
 func TestAuthorizationCheckpointRejectsDamagedTail(t *testing.T) {
-	for _, kind := range []string{"short", "extra", "length", "signature", "padding", "header", "oversize"} {
+	for _, kind := range []string{"short", "extra", "length", "signature", "outer-signature", "slot0-padding", "slot1-padding", "header-padding", "header", "oversize"} {
 		t.Run(kind, func(t *testing.T) {
 			s := checkpointTestStore(t)
 			a := authorizationAnchor{Domain: "checkpoint-test", Generation: 1, Version: 1, Highwater: time.Now().UTC()}
@@ -101,26 +101,59 @@ func TestAuthorizationCheckpointRejectsDamagedTail(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			before := append([]byte(nil), raw...)
 			start := len(raw) - authorizationCheckpointRecordSize
+			resign := func(offset int) {
+				end := offset + authorizationCheckpointRecordSize - ed25519.SignatureSize
+				message := append([]byte(authorizationCheckpointWriteMagic), raw[offset:end]...)
+				copy(raw[end:end+ed25519.SignatureSize], ed25519.Sign(s.signer, message))
+			}
 			switch kind {
 			case "short":
 				raw = raw[:len(raw)-1]
 			case "extra":
 				raw = append(raw, 0)
 			case "length":
-				raw[start] = 255
+				raw[start+8] = 255
 			case "signature":
 				i := bytes.Index(raw[start:], []byte(`"signature":"`))
 				if i < 0 {
 					t.Fatal("missing signature")
 				}
-				raw[start+i+len(`"signature":"`)] ^= 1
-			case "padding":
-				raw[len(raw)-1] = 1
+				index := start + i + len(`"signature":"`)
+				if raw[index] == 'A' {
+					raw[index] = 'B'
+				} else {
+					raw[index] = 'A'
+				}
+				resign(start)                                              // Valid base64 and outer signature, invalid inner signature.
+				copy(raw[authorizationCheckpointHeaderSize:], raw[start:]) // Equal sequence requires identical records.
+			case "outer-signature":
+				raw[len(raw)-1] ^= 1
+			case "slot0-padding", "slot1-padding":
+				offset := authorizationCheckpointHeaderSize
+				if kind == "slot1-padding" {
+					offset += authorizationCheckpointRecordSize
+				}
+				index := offset + authorizationCheckpointRecordSize - ed25519.SignatureSize - 1
+				if raw[index] != 0 {
+					t.Fatal("fixture index is not zero padding")
+				}
+				raw[index] = 1
+				resign(offset) // Even correctly signed nonzero padding is invalid.
+			case "header-padding":
+				index := authorizationCheckpointHeaderSize - 1
+				if raw[index] != 0 {
+					t.Fatal("fixture index is not header padding")
+				}
+				raw[index] = 1
 			case "header":
 				raw[0] ^= 1
 			case "oversize":
 				raw = append(raw, make([]byte, authorizationCheckpointRecordSize*authorizationCheckpointMaxRecords)...)
+			}
+			if bytes.Equal(before, raw) {
+				t.Fatal("fault injection did not change checkpoint bytes")
 			}
 			if err := os.WriteFile(s.Path, raw, 0600); err != nil {
 				t.Fatal(err)
