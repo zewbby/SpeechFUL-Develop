@@ -38,6 +38,13 @@ def write(path, value):
     Path(path).chmod(0o600)
 
 
+def checkpoint_rollback_incompatible(candidate, rollback):
+    # The old verifier cannot authenticate the extended signed checkpoint.
+    # Do not let it inspect live material and persist a false security freeze.
+    protocol = Path('services/api/internal/authprivacy/authorization_checkpoint.go')
+    return (candidate / protocol).is_file() and not (rollback / protocol).is_file()
+
+
 def free_ports(count):
     with contextlib.ExitStack() as stack:
         sockets = [stack.enter_context(socket.socket()) for _ in range(count)]
@@ -607,6 +614,16 @@ class Lab:
                     raise RuntimeError('pre-tag rollback did not refuse safely with preserved data')
                 evidence['rollbackMode'] = 'REFUSED_C33_REQUIRES_FORWARD_REPAIR'
                 passed('pre-tag-application-rollback-refused-with-data-preserved')
+            elif checkpoint_rollback_incompatible(self.source, self.root / 'rollback-source'):
+                # This is an explicit deployment preflight refusal, not a
+                # successful execution of an old binary on new Gate material.
+                # Never downgrade signed state or recover just to make an
+                # incompatible application rollback appear successful.
+                before_refusal = self.fingerprint()
+                evidence['rollbackMode'] = 'PREFLIGHT_REFUSED_CHECKPOINT_PROTOCOL_REQUIRES_FORWARD_REPAIR'
+                if self.fingerprint() != before_refusal:
+                    raise RuntimeError('checkpoint rollback preflight changed data')
+                passed('pre-checkpoint-application-rollback-refused-before-material-read')
             else:
                 self.start(prefix='rollback-')
                 self.health()
