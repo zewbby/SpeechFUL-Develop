@@ -118,3 +118,4 @@
 - 当前实例升级备份 `/home/hnuhole/public-trial-access-01/runtime/backup/gate-continuity-20261116-4634208d0a884331919d10945a38a92e` 包含两套 custom dump、原材料／程序／被改源码；安装仅应用新增可空 UUID 列及 V 的该单列 GRANT，保留原 Goose 版本记录，后续 C43／V9 的幂等迁移可接管，不伪造已运行其他迁移。安装前后业务数据／序列摘要、密钥／证书／配置一致，Gate 始终 C OPEN:2 / V OPEN:4，累计 RECOVER 保持 2/4。原主线与其他 Worktree 未改动。
 - `gate-continuity-installed.json`／`gate-continuity-live-runtime.json` 绑定运行补丁、备份和实际二进制；`gate-continuity-live-session-checks.json` PASS：更新前建立的既有任务合成会话仅在内存保留，更新后未再次登录，同一令牌访问会话／频道／首页均 200，实际 Frp C/V 严格 TLS 健康入口均 200；最终 Status PASS，后端／代理 active。原来已经因上一轮安全恢复失效的第 1 代会话不回退复活，本次升级没有新增撤销或恢复代次。
 - 当前交付：代码完成；聚焦真实 SQL、进程与当前实例验证 PASS；完整远程 CI 待验；未 Push／PR／合并；本机试用修复已生效，未正式发布。测试仅使用自建隔离库及原任务合成账号，没有发送真实 OTP、操作真实用户账号、重置正式 schema 或发布新帖子。
+- 2026-11-16 后续授权：用户明确“把这个修复推送上去，跑完 GitHub CI，通过后合并主线”，覆盖本任务分支 Push、创建 PR、修复适用 CI 并在当前 head 产品 CI 通过后合并 `origin/main`；不扩展为正式发布或其他任务合并。已核对最新 `origin/main` 仍为 `1d829b2`，无新增主线差异。
