@@ -38,7 +38,8 @@ var indexedDocumentSearchCandidatesSQL = strings.Replace(documentSearchCandidate
 // Large encoded fields exceed PostgreSQL's statistics width limit. The planner
 // can estimate a ubiquitous word at ten rows and perform 100k random lookups.
 // A bounded page sample is ONLY a path-selection hint, never a result set or
-// candidate limit: broad words use the complete original exact query. Sampling
+// candidate limit: broad words scan all normalized documents with the original
+// exact predicates, avoiding both bitmap lookups and source assembly. Sampling
 // unfiltered documents avoids per-account caches and query text in telemetry.
 func (c *Community) postSearchIndexSelective(ctx context.Context, tx pgx.Tx, keyword string) (bool, error) {
 	defer readtiming.Span(ctx, "search_route")()

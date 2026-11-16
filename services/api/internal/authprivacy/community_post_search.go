@@ -214,6 +214,7 @@ func (c *Community) preparePostSearch(ctx context.Context, account uuid.UUID, qu
 	}
 	defer tx.Rollback(ctx)
 	useDocumentIndex := false
+	useDocumentScan := false
 	if c.posts.searchDocuments && query.PostID == "" && postSearchHasTrigram(query.Keyword) {
 		var ready bool
 		if err := tx.QueryRow(ctx, `SELECT ready AND normalization_version=pg_collation_actual_version('pg_catalog."und-x-icu"'::regcollation) FROM c_posts.post_search_document_state WHERE singleton`).Scan(&ready); err != nil || !ready {
@@ -223,7 +224,8 @@ func (c *Community) preparePostSearch(ctx context.Context, account uuid.UUID, qu
 		if err != nil {
 			return prepared, err
 		}
-		if useDocumentIndex {
+		useDocumentScan = !useDocumentIndex
+		if useDocumentIndex || useDocumentScan {
 			// Keyword frequencies differ by orders of magnitude. Reusing a
 			// generic rare-word plan for a high-hit query can force expensive
 			// bitmap/row lookups; keep this setting local to the prepare tx.
@@ -272,6 +274,8 @@ func (c *Community) preparePostSearch(ctx context.Context, account uuid.UUID, qu
 	}
 	if useDocumentIndex {
 		candidateSQL = indexedDocumentSearchCandidatesSQL
+	} else if useDocumentScan {
+		candidateSQL = documentSearchCandidatesSQL
 	}
 	args := []any{query.Sort == posts.SearchRelevance, query.Keyword, position.Ceiling,
 		nullablePostID(query.ChannelID), preferences.BlockedChannelIDs, groups, lastAt,

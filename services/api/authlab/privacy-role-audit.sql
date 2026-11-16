@@ -45,7 +45,7 @@ BEGIN
     FOR relation IN SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
       WHERE n.nspname='c_inbox' OR (n.nspname='c_comments' AND p.proname='advance_read_versions')
 		OR (n.nspname='c_posts' AND p.proname IN ('advance_feed_read_versions','account_thumbnail_storage','erase_source_thumbnails',
-          'refresh_post_search_document','sync_post_search_document','backfill_post_search_documents','validate_post_search_documents')) LOOP
+          'refresh_post_search_document','sync_post_search_document','backfill_post_search_documents','validate_post_search_documents','current_post_search_documents')) LOOP
       IF has_function_privilege(audit_role,relation.oid,'EXECUTE') THEN
         RAISE EXCEPTION 'private trigger function acquired operational execute';
       END IF;

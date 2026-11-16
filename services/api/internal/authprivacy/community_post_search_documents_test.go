@@ -98,15 +98,8 @@ func TestFeedPostSearchDocumentsSchemaAndPrivilegesPostgres(t *testing.T) {
 	if configured, err := l.c.WithPosts(ctx, config); err != nil || !configured.posts.searchDocuments {
 		t.Fatal("explicit search configuration rejected", err)
 	}
-	var viewDigest string
-	if err := l.cp.QueryRow(ctx, `SELECT encode(sha256(convert_to(pg_get_viewdef('c_posts.current_post_search_documents'::regclass,true),'UTF8')),'hex')`).Scan(&viewDigest); err != nil {
-		t.Fatal(err)
-	}
-	if viewDigest != postSearchDocumentViewDigest {
-		t.Fatal("source view definition changed", viewDigest)
-	}
-	var viewSQL, refreshSQL string
-	if err := l.cp.QueryRow(ctx, `SELECT pg_get_viewdef('c_posts.current_post_search_documents'::regclass,true),pg_get_functiondef('c_posts.refresh_post_search_document(uuid)'::regprocedure)`).Scan(&viewSQL, &refreshSQL); err != nil {
+	var sourceSQL, refreshSQL string
+	if err := l.cp.QueryRow(ctx, `SELECT pg_get_functiondef('c_posts.current_post_search_documents(uuid)'::regprocedure),pg_get_functiondef('c_posts.refresh_post_search_document(uuid)'::regprocedure)`).Scan(&sourceSQL, &refreshSQL); err != nil {
 		t.Fatal(err)
 	}
 	grant, err := os.ReadFile("../../../../infra/postgres/grant-community.sql")
@@ -125,7 +118,7 @@ func TestFeedPostSearchDocumentsSchemaAndPrivilegesPostgres(t *testing.T) {
 	if err = runtime.checkPostSearchDocumentSchema(ctx); err != nil {
 		t.Fatal("runtime grants", err)
 	}
-	for _, statement := range []string{`DELETE FROM c_posts.post_search_documents`, `UPDATE c_posts.post_search_document_state SET ready=true`, `SELECT c_posts.refresh_post_search_document(gen_random_uuid())`, `SELECT c_posts.validate_post_search_documents()`, `SELECT c_posts.backfill_post_search_documents(1)`} {
+	for _, statement := range []string{`DELETE FROM c_posts.post_search_documents`, `UPDATE c_posts.post_search_document_state SET ready=true`, `SELECT c_posts.refresh_post_search_document(gen_random_uuid())`, `SELECT c_posts.validate_post_search_documents()`, `SELECT c_posts.backfill_post_search_documents(1)`, `SELECT c_posts.current_post_search_documents(NULL)`} {
 		if _, err = pool.Exec(ctx, statement); err == nil {
 			t.Fatalf("runtime maintenance permitted: %s", statement)
 		}
@@ -138,7 +131,8 @@ func TestFeedPostSearchDocumentsSchemaAndPrivilegesPostgres(t *testing.T) {
 		{`DROP INDEX c_posts.post_search_documents_trgm_idx`, `CREATE INDEX post_search_documents_trgm_idx ON c_posts.post_search_documents USING gin(search_key public.gin_trgm_ops)`},
 		{`GRANT UPDATE(ready) ON c_posts.post_search_document_state TO hnuhole_c_runtime`, `REVOKE UPDATE(ready) ON c_posts.post_search_document_state FROM hnuhole_c_runtime`},
 		{`GRANT EXECUTE ON FUNCTION c_posts.backfill_post_search_documents(integer) TO hnuhole_c_runtime`, `REVOKE EXECUTE ON FUNCTION c_posts.backfill_post_search_documents(integer) FROM hnuhole_c_runtime`},
-		{`CREATE OR REPLACE VIEW c_posts.current_post_search_documents AS SELECT * FROM c_posts.post_search_documents WHERE false`, `CREATE OR REPLACE VIEW c_posts.current_post_search_documents AS ` + viewSQL},
+		{`ALTER FUNCTION c_posts.current_post_search_documents(uuid) VOLATILE`, `ALTER FUNCTION c_posts.current_post_search_documents(uuid) STABLE`},
+		{`CREATE OR REPLACE FUNCTION c_posts.current_post_search_documents(selected uuid DEFAULT NULL) RETURNS SETOF c_posts.post_search_documents LANGUAGE sql STABLE SET search_path=pg_catalog AS $$ SELECT * FROM c_posts.post_search_documents WHERE false $$`, sourceSQL},
 		{`CREATE OR REPLACE FUNCTION c_posts.refresh_post_search_document(selected uuid) RETURNS void LANGUAGE plpgsql SET search_path=pg_catalog AS $$ BEGIN RETURN; END $$`, refreshSQL},
 	} {
 		mustExec(t, l.cp, mutation.change)

@@ -31,7 +31,9 @@ CREATE TABLE c_posts.post_search_document_state (
 -- One definition for synchronization, backfill and the bidirectional diff.
 -- Source visibility remains authoritative; normalization is exactly the old
 -- search's ICU lower, including contextual Unicode casing of each field/tag.
-CREATE VIEW c_posts.current_post_search_documents AS
+CREATE FUNCTION c_posts.current_post_search_documents(selected uuid DEFAULT NULL)
+RETURNS SETOF c_posts.post_search_documents LANGUAGE plpgsql STABLE SET search_path=pg_catalog AS $$
+DECLARE source_sql constant text := $source$
 SELECT p.post_id,p.channel_id,p.published_at,p.publication_ordinal,
        p.published_attempt_version AS source_version,COALESCE(p.edit_revision,p.post_id) AS content_revision,
        w.title_norm,w.body_norm,w.tags_norm,
@@ -44,7 +46,16 @@ CROSS JOIN LATERAL (
            lower(COALESCE(p.edited_body,x.body) COLLATE pg_catalog."und-x-icu") COLLATE "C" AS body_norm,
            ARRAY(SELECT lower(tag COLLATE pg_catalog."und-x-icu") FROM unnest(p.tags) tag) COLLATE "C" AS tags_norm
 ) w
-WHERE p.visibility='PUBLISHED' AND NOT p.moderation_hidden AND x.erased_at IS NULL;
+WHERE p.visibility='PUBLISHED' AND NOT p.moderation_hidden AND x.erased_at IS NULL
+$source$;
+BEGIN
+    -- Separate constant statement shapes: a point refresh must never inherit
+    -- an optional-parameter generic plan that scans all source history.
+    IF selected IS NULL THEN RETURN QUERY EXECUTE source_sql;
+    ELSE RETURN QUERY EXECUTE source_sql || ' AND p.post_id=$1' USING selected;
+    END IF;
+END
+$$;
 
 CREATE FUNCTION c_posts.refresh_post_search_document(selected uuid) RETURNS void
 LANGUAGE plpgsql SET search_path=pg_catalog AS $$
@@ -53,7 +64,7 @@ BEGIN
     -- AFTER waiting; never upsert a pre-lock snapshot over a concurrent edit.
     PERFORM 1 FROM c_posts.posts WHERE post_id=selected FOR NO KEY UPDATE;
     INSERT INTO c_posts.post_search_documents
-        SELECT * FROM c_posts.current_post_search_documents WHERE post_id=selected
+        SELECT * FROM c_posts.current_post_search_documents(selected)
     ON CONFLICT(post_id) DO UPDATE SET
         channel_id=EXCLUDED.channel_id,published_at=EXCLUDED.published_at,
         publication_ordinal=EXCLUDED.publication_ordinal,source_version=EXCLUDED.source_version,
@@ -68,7 +79,7 @@ BEGIN
            EXCLUDED.body_norm,EXCLUDED.tags_norm,EXCLUDED.search_key);
     IF NOT FOUND THEN
         DELETE FROM c_posts.post_search_documents d WHERE d.post_id=selected
-          AND NOT EXISTS (SELECT 1 FROM c_posts.current_post_search_documents s WHERE s.post_id=selected);
+          AND NOT EXISTS (SELECT 1 FROM c_posts.current_post_search_documents(selected));
     END IF;
 END
 $$;
@@ -137,9 +148,9 @@ BEGIN
     -- Both sides use ONE statement snapshot. Concurrent business writes keep
     -- this invariant in their own transaction; no global/table write lock.
     IF EXISTS (
-        (SELECT * FROM c_posts.current_post_search_documents EXCEPT SELECT * FROM c_posts.post_search_documents)
+        (SELECT * FROM c_posts.current_post_search_documents(NULL) EXCEPT SELECT * FROM c_posts.post_search_documents)
         UNION ALL
-        (SELECT * FROM c_posts.post_search_documents EXCEPT SELECT * FROM c_posts.current_post_search_documents)
+        (SELECT * FROM c_posts.post_search_documents EXCEPT SELECT * FROM c_posts.current_post_search_documents(NULL))
     ) THEN RAISE EXCEPTION 'post search projection inconsistent'; END IF;
     UPDATE c_posts.post_search_document_state SET ready=true,
         normalization_version=pg_collation_actual_version('pg_catalog."und-x-icu"'::regcollation) WHERE singleton;
@@ -147,9 +158,10 @@ BEGIN
 END
 $$;
 
-REVOKE ALL ON c_posts.post_search_documents,c_posts.post_search_document_state,c_posts.current_post_search_documents FROM PUBLIC;
+REVOKE ALL ON c_posts.post_search_documents,c_posts.post_search_document_state FROM PUBLIC;
 REVOKE ALL ON FUNCTION c_posts.refresh_post_search_document(uuid),c_posts.sync_post_search_document(),
-    c_posts.backfill_post_search_documents(integer),c_posts.validate_post_search_documents() FROM PUBLIC;
+    c_posts.backfill_post_search_documents(integer),c_posts.validate_post_search_documents(),
+    c_posts.current_post_search_documents(uuid) FROM PUBLIC;
 DO $$ BEGIN
     IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='hnuhole_c_runtime') THEN
         GRANT SELECT ON c_posts.post_search_documents,c_posts.post_search_document_state TO hnuhole_c_runtime;

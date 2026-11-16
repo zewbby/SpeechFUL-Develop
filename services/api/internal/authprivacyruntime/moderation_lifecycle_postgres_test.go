@@ -191,9 +191,8 @@ func TestModerationLifecycleCommonCStartupWithoutFeaturesPostgres(t *testing.T) 
 	// Remove later prepared-read, tags and edit dependencies in this owned fixture.
 	exec(t, `DROP TRIGGER post_search_document_post ON c_posts.posts;
 DROP TRIGGER post_search_document_content ON c_posts.attempt_contents;
-DROP VIEW c_posts.current_post_search_documents;
 DROP FUNCTION c_posts.refresh_post_search_document(uuid),c_posts.sync_post_search_document(),
- c_posts.backfill_post_search_documents(integer),c_posts.validate_post_search_documents();
+ c_posts.backfill_post_search_documents(integer),c_posts.validate_post_search_documents(),c_posts.current_post_search_documents(uuid);
 DROP TABLE c_posts.post_search_documents,c_posts.post_search_document_state;
 DROP TRIGGER prepared_feed_channel ON public.channels;
 DROP TRIGGER prepared_feed_post ON c_posts.posts;
