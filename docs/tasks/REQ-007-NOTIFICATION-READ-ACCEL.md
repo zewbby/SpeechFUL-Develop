@@ -3,7 +3,7 @@
 - 模式：常规
 - 负责人／状态维护人：当前 Session
 - 执行 Session（指挥模式）：无
-- 分支／Worktree／PR：`perf/notification-read-accel` @ `E:\speechful-notif-accel`；实现提交 `44243ca`；集成提交 `743cc4c`（按 #4 `a25aa8b` → #6 `44f07a4` → #5 合入）；PR [#5](https://github.com/zewbby/SpeechFUL-Develop/pull/5)（open，base `perf/comment-load-accel`，未合并）
+- 分支／Worktree／PR：`perf/notification-read-accel` @ `E:\speechful-notif-accel`；实现提交 `44243ca`；集成提交 `743cc4c`（按 #4 `a25aa8b` → #6 `44f07a4` → #5 合入，并同步 #6 文档 `af8eda3`）；集成 head `38f93f4`；PR [#5](https://github.com/zewbby/SpeechFUL-Develop/pull/5)（open，base `perf/comment-load-accel`，未合并）
 - 本轮规则版本（指挥模式）：不适用
 - 授权依据与边界：用户 2026-11-16 指令“继续完成07优化”（需求行“通知列表与未读统计优化”）及“完成后向仓库提交pr”。授权范围为定位、实现、隔离库验证、本地提交、推送本任务分支并创建 PR；未授权合并、部署、发布或改动正式数据。
 - 需求确认：用户已确认优化对象为通知列表与未读统计读取。读取口径沿用现有产品语义：互动通知按当前身份过滤，系统通知按账号共享；COMMENT 未读为 `read_version=0`，LIKE 未读为存在版本大于 `read_version` 的点赞事件；取消点赞不回退 `version`，已读历史由 `seen_like_count` 保留。无未决取舍。
@@ -49,7 +49,7 @@
 | 等价性 | 同上 A/B 库 | 各身份未读数与系统计数逐项一致；全部列表与未读列表前 21 条 ID/时间逐行 `diff` 一致 |
 | 集成验证 | 集成提交 `743cc4c`（#4 `a25aa8b` → #6 `44f07a4` → #5），WSL2 Ubuntu-24.04 / PostgreSQL 16，隔离 fixture；Go 1.22.2 | PASS：迁移账本 45/45（DM fresh/upgrade、feed 7 模式、avatar、通知 fresh/upgrade）；DM 目录重建 7 子测试、索引回滚/重放、迁移版本唯一性；评论/通知 CI 聚焦集（`TestCommentText*`、`TestCommentBusiness*`、`TestNotificationInbox*`、`TestInboxRoutesAndDisabledMentionsBoundary`、moderation 迁移集）全部 PASS；`go build ./...`、`go vet`、LF 副本 `gofmt -l` 无输出 |
 | 产品 CI | PR #5 head `3b25645`（集成前） | PASS：21 项检查 20 success、1 skip（`actual-process-acceptance` 按设计跳过）；`go-postgres`、`feed-postgres`、`flutter`、`policy` 等均 success |
-| 产品 CI | PR #5 集成后 head | NOT_RUN（推送后由 GitHub Actions 执行，结果补记于本表） |
+| 产品 CI | PR #5 集成 head `38f93f4` | PASS：21 项检查 20 success、1 skip（`actual-process-acceptance` 按设计跳过），无 failure；`go-postgres`、`feed-postgres`、`flutter`、`policy` 等均 success。另有 1 个重复 `policy` 运行被 concurrency 取消，不影响结果；PR 状态 clean |
 | 产品级 P95 | 真实规模数据与客户端链路 | NOT_RUN |
 
 ## 阻碍与下一步
