@@ -5,7 +5,7 @@
 - 授权依据与边界：2026-11-16 用户明确要求“按这个计划开始实施，完成六类列表批量读取和首页 10/5/5 分页，再按三项硬门槛验收”，授权隔离实现、必要本地提交和验证；随后明确回复“授权本任务推送、草稿 PR 和 CI（推荐）”，覆盖本任务分支后续必要push、草稿PR及产品／性能CI。不修改正式数据；远端合并和正式发布仍未授权。
 - 需求确认：用户 Q1 选择六类共用列表一起优化；Q2 选择三项均作硬门槛；后续明确首屏10条、刷新新增5条、续页5条；Q4 选择最新5条先显示、后续刷新补齐中间帖子。刷新不足5条按实际数量，无新帖保留已有列表。六类为首页、频道、作者、我的帖子、点赞、收藏；10/5/5 适用于首页及频道筛选，其他列表原页大小保留。热榜和搜索不扩大范围。
 - 更新日期：2026-11-16。
-- 状态：SQL硬门槛PASS。5bf＋main3746独立CI的42组／3780计时全部有效，实际10/5/5九项均达到40%；完整21项仅普通home10第3轮出现Tail而FAIL，17类workflow中16PASS、仅Feed性能FAIL。已对齐真实合成源码并增加独立因果诊断，尚未确定原CI Tail原因，本轮没有声称产品Tail修复。手机25%与布局NOT_RUN。PR保持draft；未合并；未发布。
+- 状态：SQL硬门槛PASS。ef独立CI的42组／3780计时全有效，完整21项19PASS，实际10/5/5九项中两项小页不足40%；17类workflow中16PASS、仅Feed性能FAIL。已根据同请求trace减少检查点的大块临时堆分配，保持全部授权／持久化保证，候选接口40%待新head CI。旧5bf交替Tail原因仍未定；手机25%与布局NOT_RUN。PR保持draft；未合并；未发布。
 
 ## 目标与范围
 
@@ -185,11 +185,21 @@
 - 新隔离副本从4b Git archive建立，binary一律原bytes，只有明确UTF-8 shell转换LF，symlink目标及Git类型／执行位逐项验证；最终`ultra-tail-source-final-04.json`核对836文件，两个Go诊断文件及两份比较器文本覆盖单列，未再统一normalize。原fresh副本首轮host `ultra-tail-host-02.log`因漏入infra/commentsnapshot、infra/ratelimit已提交模板而FAIL；补齐完整infra原bytes后`ultra-tail-host-03.log`完整go test/build/vet/gofmt及只读计数器PASS，旧失败保留。后续可选trace→pprof工具未产出profile、启动了查看器，已停止自有helper并确认端口关闭；raw trace未改。
 - `ultra-tail-baseline-compile-04.log`在新建的冻结1d API／infra原bytes副本，仅覆盖与正式CI相同的共享测量文件及两份clock helper，`go test -run '^$'`编译PASS，不是运行性能；`ultra-tail-compare-04.log`4项比较器测试PASS，含诊断数据拒绝反例。该提交仍是来源集成与诊断能力，原CI Tail原因未定，手机25%／布局仍NOT_RUN。
 
+## 2026-11-16 ef同请求GC证据与检查点缓冲修复
+
+- [Feed CI 43870703913](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43870703913) source `5f34ef49e37062030f1a86bfeddebf3c6414f8cf`、tree `a6ab0004ec9f54983c8efe89b68d26ba55200471`与ef精确一致，parents为main3746和ef，没有额外产品差异。正式42组／3780计时全有效，Complete=true／PASS=false，19/21PASS：incrementalRefresh5第1轮old4.479252ms／new2.760631ms（38.37%）、incrementalNext5第3轮old4.536784ms／new2.747987ms（39.43%）FAIL；其余19项PASS。17类workflow最终16PASS，仅Feed正式性能FAIL，前置host／SQL／C/V及630诊断PASS。上一轮普通home10交替Tail没有重现，不等于已修。
+- 原始`ci-ef-feed-batch-performance.zip` SHA256 `4e18598524380ac5df6b79622fa6d22265991a34160083519e3b3bfc77ea6752`、`ci-ef-feed-request-timing.zip` `cda8dde0f0da92093983a0f653204ce98638f36ea2ce6a8ee470e0bd9c81a394`、`ci-ef-feed-tail-diagnostic.zip` `203fe6ed29d2a60ea6dc66d6f00b26a218c6ee98ea4930b3bef9a13c3c99b280`完整保留。离线解包／分析在`ultra-ef-diagnostic-analysis-01`，无新正式采样、删样或改guard。
+- 630同请求诊断全部连接复用；仅home20最初两条预热为6.24／6.00ms，其余最高3.96ms，未见旧10–16ms慢段。Go1.22.2 execution trace未截断，共534521事件、630组首尾标记；`trace-correlations.json`／`trace-compact-evidence.json`保留关联。incrementalRefresh5/15为3.919ms：`checkpointSlotRecord`的append分配直接触发GC sweep termination；该请求与1.593ms并发mark重叠，服务goroutine另有0.901ms Runnable。home10/21的`decodeCheckpointSlots`有137µs mark assist。这里证明具体分配与GC活动发生，不能把并发GC全时长当作阻塞，更不能据此解释旧5bf不同轮次的0.4秒Tail。Go1.22 trace v2未处理-pprof参数而会启动查看器，本次按实际工具源确认使用纯离线`-d=1`，没有监听服务。
+- 已确认的一处分配开销是每次双槽解码返回实际JSON的切片，却使整个36KiB容器逃逸；每个正常V2业务请求在候选读取、最终读取、writer重核对中出现三次。修复仅将该容器变成函数局部固定数组、用`bytes.Clone`返回两个已验证JSON；签名消息同样改局部固定数组，完整V2前缀／记录字节不变。没有池、解析结果缓存、授权缓存或新格式，仍每次fresh读文件、检查普通文件／精确长度／头和两槽padding／两槽完整签名／序列及内部anchor签名；写入、fdatasync、关闭、SQL提交和原子控制路径不变。
+- Go1.22.2逃逸分析确认两个scratch不逃逸。原／新各六次`benchmem`完整记录`ultra-ef-allocation-before-01.log`／`after-01.log`：decode 41168→848 B/op，read_anchor约42251→1882 B/op，record32768→16384 B/op；按该fixture三次decode＋一次record约减少137KB/request。此为可复现分配量，不是接口p95验收；早期诊断解码存在并行CPU活动，微基准耗时不作受控速度结论。没有为此重复旧正式三轮或刷到通过。
+- 新所有权反证覆盖普通／8192字节最大payload、完整V2签名、调用方输入变动、连续原子改写／后续解码／GC后已返回JSON仍独立，两个返回payload互不别名。`ultra-ef-buffers-unit-02.log`原坏槽／签名组加新反证-race PASS15.975s；`ultra-ef-buffers-host-02.log`完整go test/build/vet与改动文件gofmt PASS。`ultra-ef-buffers-pg-02.log`真实一次性PG-race聚焦PASS 274.341s，包含C/V只读中断续行、回滚／错误前驱／冻结、临时证据中断、JSON/V1升级、部分写和损坏拒绝、memo新鲜读取及prepared六列表／九图／增量并发，未将无DSN的unit当PG证据。
+- 最终隔离副本`ef-buffers-final-01`从ef完整Git archive建立，`ultra-ef-buffers-source-final-02.json`核对837项：binary原bytes、明确UTF-8 shell LF、Git执行位和symlink；两个产品／测试覆盖单列，普通文件权限明确644／755，不带archive775／664的group写位。源码与最终D文件对应。该提交只修复已证明的大块分配，最终完整21项40%与手机25%／布局仍须独立验收。
+
 ## 阻碍与下一步
 
-此前的暂停及无设备BLOCKED证据保留；vivo旧租约已过期，用户已完成Xiaomi15（serial63005867）的调试授权，随后设备暂时离线，正式设备测量时再核对连接。当前手机25%及布局为NOT_RUN，设备由当前本任务租约协调，不沿用旧vivo授权。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`与本轮契约一致。独立Linux CI已确认普通home10 Tail，不能将其标为WSL计时阻碍；实际10/5/5九项已达40%，完整21项仍须通过。
+此前的暂停及无设备BLOCKED证据保留；vivo旧租约已过期，用户已完成Xiaomi15（serial63005867）的调试授权，随后设备暂时离线，正式设备测量时再核对连接。当前手机25%及布局为NOT_RUN，小米旧租约已于20:19过期，开测须重新核对连接并取得本任务有效租约，不沿用旧设备授权。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`与本轮契约一致。独立Linux CI当前仍有两项小页不足40%；旧5bf Tail尚未确定原因，不能归为WSL或宣称已修，完整21项仍须通过。
 
-1. 三项硬门槛目前仅SQL通过；接口5bf＋main3746的全有效普通home10 Tail仍有FAIL，新候选待对应head的完整冻结旧版本三轮独立复测；手机NOT_RUN。任务不标记ready或发布。
+1. 三项硬门槛目前仅SQL通过；接口ef的全有效两项小页仍有FAIL，新候选待对应head的完整冻结旧版本三轮独立复测；手机NOT_RUN。任务不标记ready或发布。
 2. 保留所有无效／失败样本和40%门槛，观察同一CI请求阶段定位剩余成本；不调低计时守卫或以页大小缩减代替同页性能。完整原始源码基线及真实 `paging=incremental-v1` 测量保持不变。
 3. Astra Ultra定位与修复完成后，交回GPT-6.1 Sol XHigh独立验收，包括固定设备／网络的25%和图片布局检查；手机使用完整1d／当前main控制／最终候选三版本：1d→最终的25%总收益仍为硬门槛，main→最终净收益独立报告，不新增第二门槛。main3746的移动端输入与main47／debc一致，可复用已冻结控制APK，但控制服务端须更新为3746，不能混用旧服务端声称当前主线对照。
 4. 按已有授权推送本任务分支并跟进草稿PR和对应head产品CI。合并及正式部署仍未授权。

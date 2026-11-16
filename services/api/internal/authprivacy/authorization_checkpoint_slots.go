@@ -28,7 +28,11 @@ func checkpointSlotRecord(raw []byte, sequence uint64, key ed25519.PrivateKey) (
 	binary.BigEndian.PutUint32(record[8:12], uint32(len(raw)))
 	copy(record[12:], raw)
 	end := len(record) - ed25519.SignatureSize
-	message := append([]byte(authorizationCheckpointWriteMagic), record[:end]...)
+	// Preserve the exact V2 signed bytes without a second heap-sized record.
+	var signed [len(authorizationCheckpointWriteMagic) + authorizationCheckpointRecordSize - ed25519.SignatureSize]byte
+	copy(signed[:], authorizationCheckpointWriteMagic)
+	copy(signed[len(authorizationCheckpointWriteMagic):], record[:end])
+	message := signed[:]
 	copy(record[end:], ed25519.Sign(key, message))
 	return record, nil
 }
@@ -48,7 +52,10 @@ func decodeCheckpointSlots(f *os.File, public ed25519.PublicKey, memo *authoriza
 	if !info.Mode().IsRegular() || info.Size() != authorizationCheckpointSlotsSize {
 		return slots, errors.New("invalid independent checkpoint slots length")
 	}
-	raw := make([]byte, authorizationCheckpointSlotsSize)
+	// The complete fresh container is scratch only. Returned JSON owns a copy,
+	// so no caller retains the padded container or borrows this stack storage.
+	var scratch [authorizationCheckpointSlotsSize]byte
+	raw := scratch[:]
 	if _, err = f.ReadAt(raw, 0); err != nil {
 		return slots, err
 	}
@@ -73,7 +80,7 @@ func decodeCheckpointSlots(f *os.File, public ed25519.PublicKey, memo *authoriza
 		if !memo.verifyWithPrefix(public, authorizationCheckpointWriteMagic, record[:end], record[end:]) {
 			return slots, errors.New("invalid independent checkpoint slot signature")
 		}
-		slots.sequence[n], slots.raw[n] = sequence, record[12:12+size]
+		slots.sequence[n], slots.raw[n] = sequence, bytes.Clone(record[12:12+size])
 	}
 	if slots.sequence[1] > slots.sequence[0] {
 		slots.latest = 1
