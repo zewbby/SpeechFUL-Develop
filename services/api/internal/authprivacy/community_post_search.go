@@ -215,14 +215,16 @@ func (c *Community) preparePostSearch(ctx context.Context, account uuid.UUID, qu
 	defer tx.Rollback(ctx)
 	useDocumentIndex := false
 	useDocumentScan := false
-	if c.posts.searchDocuments && query.PostID == "" && postSearchHasTrigram(query.Keyword) {
+	if c.posts.searchDocuments && query.PostID == "" {
 		var ready bool
 		if err := tx.QueryRow(ctx, `SELECT ready AND normalization_version=pg_collation_actual_version('pg_catalog."und-x-icu"'::regcollation) FROM c_posts.post_search_document_state WHERE singleton`).Scan(&ready); err != nil || !ready {
 			return prepared, ErrAuthorizationUnavailable
 		}
-		useDocumentIndex, err = c.postSearchIndexSelective(ctx, tx, query.Keyword)
-		if err != nil {
-			return prepared, err
+		if postSearchHasTrigram(query.Keyword) {
+			useDocumentIndex, err = c.postSearchIndexSelective(ctx, tx, query.Keyword)
+			if err != nil {
+				return prepared, err
+			}
 		}
 		useDocumentScan = !useDocumentIndex
 		if useDocumentIndex || useDocumentScan {

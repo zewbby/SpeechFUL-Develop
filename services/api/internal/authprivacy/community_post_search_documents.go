@@ -51,8 +51,8 @@ func (c *Community) postSearchIndexSelective(ctx context.Context, tx pgx.Tx, key
 }
 
 // A conservative routing hint, never a matching rule. No minimum keyword length
-// is introduced. Punctuation-only and short words retain the original exact
-// query: they must not pay for a read-model scan or a broad candidate index.
+// is introduced. Punctuation-only and short words scan normalized fields with
+// the original exact predicates; they never use the broad candidate index.
 func postSearchHasTrigram(keyword string) bool {
 	run := 0
 	for _, r := range keyword {
