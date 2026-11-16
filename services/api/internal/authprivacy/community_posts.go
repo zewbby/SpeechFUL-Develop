@@ -221,10 +221,9 @@ func (c *Community) withPostSessionAtPrepared(ctx context.Context, token [32]byt
 		if err = tx.QueryRow(ctx, `SELECT state,session_generation FROM c_auth.accounts WHERE account_id=$1 FOR UPDATE`, account).Scan(&a.state, &a.generation); err != nil {
 			return result, ErrAuthorizationUnavailable
 		}
-		if a.ban, err = lockRestriction(ctx, tx, account); err != nil {
-			return result, ErrAuthorizationUnavailable
-		}
-		if err = tx.QueryRow(ctx, `SELECT mute_state,mute_ends_at FROM c_auth.account_restrictions WHERE account_id=$1`, account).Scan(&mute.state, &mute.ends); err != nil {
+		// Ban and mute are fields of the same locked restriction row. Read
+		// them together while preserving account -> restrictions -> session.
+		if err = tx.QueryRow(ctx, `SELECT ban_state,ban_ends_at,mute_state,mute_ends_at FROM c_auth.account_restrictions WHERE account_id=$1 FOR UPDATE`, account).Scan(&a.ban.state, &a.ban.ends, &mute.state, &mute.ends); err != nil {
 			return result, ErrAuthorizationUnavailable
 		}
 		session, err = lockCredentialSession(ctx, tx, a, token)

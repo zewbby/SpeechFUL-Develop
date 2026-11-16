@@ -291,9 +291,18 @@ func (g *PostgresAuthorizationGate) RecheckForCommit(ctx context.Context, tx pgx
 	if expected == 0 || row.generation < 0 || uint64(row.generation) != expected {
 		return AuthorizationDecision{}, ErrAuthorizationUnavailable
 	}
+	return g.recheckLockedGateRow(ctx, tx, row)
+}
+
+// The native private-read precheck already obtained this row FOR UPDATE. Reuse
+// that exact row; a final commit still requires the caller's expected generation.
+func (g *PostgresAuthorizationGate) recheckLockedGateRow(ctx context.Context, tx pgx.Tx, row gateRow) (AuthorizationDecision, error) {
+	if row.generation <= 0 {
+		return AuthorizationDecision{}, ErrAuthorizationUnavailable
+	}
 	var decision AuthorizationDecision
 	var reason string
-	err = g.observedAnchorLock(ctx, func(a *authorizationAnchor, exists bool) error {
+	err := g.observedAnchorLock(ctx, func(a *authorizationAnchor, exists bool) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

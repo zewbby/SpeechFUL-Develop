@@ -15,7 +15,8 @@ import (
 // their original Snapshot behavior and their own generation source.
 func (c *Community) postCandidateDecision(ctx context.Context, pool *pgxpool.Pool) (AuthorizationDecision, error) {
 	defer readtiming.Span(ctx, "candidate_authority")()
-	if gate, ok := c.gate.(*PostgresAuthorizationGate); !ok || gate.schema != "c_auth" {
+	gate, ok := c.gate.(*PostgresAuthorizationGate)
+	if !ok || gate.schema != "c_auth" {
 		return c.gate.Snapshot(ctx)
 	}
 	tx, err := begin(ctx, pool)
@@ -23,11 +24,11 @@ func (c *Community) postCandidateDecision(ctx context.Context, pool *pgxpool.Poo
 		return AuthorizationDecision{}, ErrAuthorizationUnavailable
 	}
 	defer tx.Rollback(ctx)
-	var generation uint64
-	if err := tx.QueryRow(ctx, `SELECT authorization_generation FROM c_auth.authorization_gate WHERE singleton_id=1`).Scan(&generation); err != nil {
+	row, err := gate.readGateRow(ctx, tx)
+	if err != nil {
 		return AuthorizationDecision{}, ErrAuthorizationUnavailable
 	}
-	decision, err := c.gate.RecheckForCommit(ctx, tx, generation)
+	decision, err := gate.recheckLockedGateRow(ctx, tx, row)
 	if err != nil {
 		// A detected independent freeze must survive rollback of this read.
 		_ = c.gate.Abort(ctx, tx)
