@@ -233,7 +233,11 @@ func TestVerifierGateEvidenceAndReplicaFailuresPostgres(t *testing.T) {
 					t.Fatal("V replica B ignored persisted freeze")
 				}
 			}
-			assertVerifierFrozen(t, c)
+			if scenario == "expired" || scenario == "missing" {
+				assertTemporaryEvidenceRecovers(t, c)
+			} else {
+				assertVerifierFrozen(t, c)
+			}
 			if _, err := c.lab.gate.Snapshot(ctx); err != nil {
 				t.Fatalf("V fault affected C: %v", err)
 			}
@@ -482,7 +486,12 @@ func TestVerifierGateEvidenceProviderWaitUsesFinalClockPostgres(t *testing.T) {
 			if _, err := c.gate.Snapshot(ctx); !errors.Is(err, ErrAuthorizationUnavailable) {
 				t.Fatalf("%s during evidence retrieval escaped final V clock check: %v", scenario, err)
 			}
-			assertVerifierFrozen(t, c)
+			if scenario == "expired" {
+				c.gate.evidence = c.provider
+				assertTemporaryEvidenceRecovers(t, c)
+			} else {
+				assertVerifierFrozen(t, c)
+			}
 		})
 	}
 	// A normal recovery's second provider read occurs while both authority

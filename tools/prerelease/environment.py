@@ -66,6 +66,7 @@ class Lab:
     def run(self, args, name, *, env=None, input=None, cwd=None, check=True, timeout=180):
         started = datetime.now(timezone.utc).isoformat()
         with (self.root / (name + '.private.log')).open('ab') as log:
+            log_start = log.tell()
             result = subprocess.run(list(map(str, args)), cwd=cwd or self.api, env=env or self.env,
                                     input=input, stdout=log, stderr=subprocess.STDOUT, timeout=timeout)
         if self.state is not None:
@@ -73,6 +74,15 @@ class Lab:
                                                              endedAtUtc=datetime.now(timezone.utc).isoformat()))
             self.save()
         if check and result.returncode:
+            if name in ('resume-c', 'resume-v'):
+                # Expose only this invocation's local authdev diagnostic. Never
+                # echo command arguments, credentials or other private logs.
+                with (self.root / (name + '.private.log')).open('rb') as log:
+                    log.seek(max(log_start, log.seek(0, 2) - 4096))
+                    lines = log.read().decode('utf-8', errors='replace').splitlines()
+                detail = next((line[:1000] for line in reversed(lines) if line.startswith('authdev: ')), '')
+                if detail:
+                    raise RuntimeError(name + ' failed: ' + detail)
             raise RuntimeError(name + ' failed (see private log)')
         return result.returncode
 

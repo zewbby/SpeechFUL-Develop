@@ -104,3 +104,13 @@
 - 验证证据在 `E:/Hnuhole-env/backend-operations-20261113/`：`gate-recovery-20261116-runtime.json` 绑定实际被测 C/V/authdev 二进制与恢复脚本 SHA256；正常 Stop → Start 后仍 OPEN:2/4，累计 RECOVER 数分别 2/4，watch 时间证据继续推进。未修改通用启动工具的“不自动 recover”策略。
 - `gate-recovery-20261116-public-checks.json`：本机 C/V `/health/ready` 均 200；实际 Frp 社区／认证入口严格 TLS 均 200。`gate-recovery-20261116-business-checks.json`：已有任务合成账号经 Frp 密码登录 201，当前会话、受保护频道与首页均 200，未登录频道 401。只操作既有合成账号并产生正常新会话；没有发送 OTP 邮件、操作真实用户账号或发布帖子／图片。
 - 边界：本次解决已确认的 C/V 检查点不一致及服务不可启动；没有证据认定最初的不完整更新由哪次关机或进程中断引起。没有修改 Gate 的安全一致性规则，也不宣称今后突然断电永不再触发。真机重新登录／上传、Windows 整机重启验收 NOT_RUN；本轮没有 App 或服务二进制升级。
+
+### 2026-11-16 用户反馈后的恢复策略修复
+
+- 用户指出因服务恢复而重新登录不合理，也不应要求其掌握手工恢复。依 `grill-with-docs` 及 `grilling`／`domain-modeling` 核对现有实现后，用户明确选择“按推荐目标修复”：正常重启与短暂故障保留有效登录；崩溃或断电后先自动核对，能证明完整就自动恢复并保留登录，无法确认安全时才暂停服务并明确提示。
+- 继续使用同一任务分支与记录。此前签名恢复已完成，不能通过回退授权代次复活旧凭据；此次修复面向后续恢复行为。实现和产品验证进行中，尚无源码修复部署结论。
+- 技术边界：仅检查点写入的中断与可能包含业务变更的未知提交必须可区分。计划用每次提交的独立随机检查点标识及签名的只读检查点推进凭据，自动补完可证明没有业务副作用的推进；未知业务提交、真实回滚、签名异常和持久冻结继续 fail closed。证据短暂缺失／合法证据过期只暂时拒绝授权，证据恢复后同代继续；不把暂时不可用直接升级为撤销全部会话。
+- 实现：上述机制已写入 Gate 核心，配套 C43／V9 迁移和 V 的单列更新权限；旧版完整匹配的材料同代升级。启动失败将具体 Gate 原因带到服务日志，普通启动保持凭据代次。同步术语、ADR 0007、现有 Gate 契约及适用 Authorization Gate CI；未改 App 或新增登录入口。
+- 聚焦验证 PASS：`gate-continuity-focused-tests-r2.log`，新建独占 PostgreSQL C/V 库，`-race` 下真实进程在文件落盘后／SQL commit 前退出、再次中断重放、原登录继续、证据缺失／过期恢复、旧材料升级、业务回滚／错误前序／显式冻结拦截。全后端 build／vet PASS，启动日志元数据回归 2 项、CI 范围回归 4 项 PASS。
+- 当前运行源基线为 `57cea75e0acbe3be8364a46b86b26f51b9a10437`，新候选只移植本项 Gate 改动，排除较新主线的 prepared-read 功能；`gate-continuity-runtime-source-proof.json` 绑定差异和实际 C/V/authdev 二进制。`gate-continuity-runtime-process-checks.json` PASS：全新隔离环境实际注册并取得会话后，正常重启、C/V 真进程 SIGKILL 于只读检查点更新中、证据缺失／过期后，同一令牌仍为 HTTP 200；临时不可用时为 503。两侧始终第 1 代，RECOVER 各 1 次（新空 Gate 初始化），FREEZE 各 0 次；测试故障触发器仅安装于新建一次性库。测试进程和数据库已停止，数据／证据保留。
+- 扩展回归 `gate-continuity-full-tests.log` 仍在运行；首轮因打包缺少 `infra/prerelease` 使一个权限检查失败，已补齐完整源码，待聚焦复跑该项。该运行不能宣称完整 PASS。GitHub CI、Push／PR／合并均 NOT_RUN；当前试用实例的源码修复部署待执行，原先恢复的服务仍在运行。
