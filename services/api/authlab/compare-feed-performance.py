@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 BASELINE = "1d829b2623a6c32830ee1b74fae6c99a436ad3b3"
-KINDS = ("home20", "next20", "home10", "next5")
+KINDS = ("home20", "next20", "home10", "next5", "incrementalHome10", "incrementalNext5", "incrementalRefresh5")
 root = Path(sys.argv[1])
 report = {"Baseline": BASELINE, "Threshold": .40, "Cohorts": [], "Comparisons": [], "Complete": False, "PASS": False}
 
@@ -23,6 +23,7 @@ try:
             data = json.loads((root / f"{mode}-{round_number}.json").read_text())
             require(data["Complete"] and data["Warmup"] == 10 and data["Samples"] == 80 and data["Rounds"] == 1, "incomplete or changed measurement protocol")
             require(data["Threshold"] == .40 and len(data["Cohorts"]) == len(KINDS), "changed threshold or cohort count")
+            require(data["Clock"] == "CLOCK_MONOTONIC_RAW", "wrong endpoint interval clock")
             require(data["Source"] and (mode != "legacy" or data["Source"] == BASELINE), "wrong source provenance")
             if mode == "batch":
                 report.setdefault("CurrentSource", data["Source"])
@@ -30,6 +31,14 @@ try:
             for c in data["Cohorts"]:
                 require(c["round"] == round_number and c["Mode"] == mode and c["Kind"] in KINDS and not c["Errors"], "invalid or failed cohort")
                 samples = c["Samples"]
+                clocks = c["Clocks"]
+                require(len(clocks) == 90 and all(clock["Valid"] for clock in clocks), "invalid or missing clock intervals")
+                for clock in clocks:
+                    raw, lower, upper = clock["RawMS"], clock["GoLowerMS"], clock["GoUpperMS"]
+                    tolerance = max(.05, .01 * raw)
+                    require(all(math.isfinite(v) for v in (raw, lower, upper)) and raw > 0 and lower > 0 and upper >= lower and upper-lower <= tolerance and lower-tolerance <= raw <= upper+tolerance, "clock bracket disagrees with RAW")
+                    require(clock["UncertaintyMS"] == upper-lower, "incorrect clock uncertainty")
+                require(samples == [clock["RawMS"] for clock in clocks[10:]], "endpoint samples differ from RAW intervals")
                 require(len(samples) == 80 and all(math.isfinite(v) and v > 0 for v in samples), "invalid samples")
                 require(c["P95"] == sorted(samples)[math.ceil(.95 * len(samples)) - 1], "p95 does not match raw samples")
                 key = (round_number, c["Kind"], mode)

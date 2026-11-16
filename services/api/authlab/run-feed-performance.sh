@@ -11,6 +11,8 @@ mkdir -p "$output"
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 current=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 cp "$current/services/api/internal/authprivacyhttp/feed_batch_performance_test.go" "$baseline/services/api/internal/authprivacyhttp/feed_batch_performance_test.go"
+cp "$current/services/api/internal/authprivacyhttp/feed_performance_clock_linux_test.go" "$baseline/services/api/internal/authprivacyhttp/feed_performance_clock_linux_test.go"
+cp "$current/services/api/internal/authprivacyhttp/feed_performance_clock_other_test.go" "$baseline/services/api/internal/authprivacyhttp/feed_performance_clock_other_test.go"
 export FEED_TEST_RACE=0 FEED_TEST_PATTERN='^TestRealHTTPSFeedBatchPerformancePostgres$' REQ002_PERFORMANCE=1
 status=0
 for round in 1 2 3; do
