@@ -5,7 +5,7 @@
 - 授权依据与边界：2026-11-16 用户明确要求“按这个计划开始实施，完成六类列表批量读取和首页 10/5/5 分页，再按三项硬门槛验收”，授权隔离实现、必要本地提交和验证；随后明确回复“授权本任务推送、草稿 PR 和 CI（推荐）”，覆盖本任务分支后续必要push、草稿PR及产品／性能CI。不修改正式数据；远端合并和正式发布仍未授权。
 - 需求确认：用户 Q1 选择六类共用列表一起优化；Q2 选择三项均作硬门槛；后续明确首屏10条、刷新新增5条、续页5条；Q4 选择最新5条先显示、后续刷新补齐中间帖子。刷新不足5条按实际数量，无新帖保留已有列表。六类为首页、频道、作者、我的帖子、点赞、收藏；10/5/5 适用于首页及频道筛选，其他列表原页大小保留。热榜和搜索不扩大范围。
 - 更新日期：2026-11-16。
-- 状态：SQL硬门槛PASS。ef独立CI的42组／3780计时全有效，完整21项19PASS，实际10/5/5九项中两项小页不足40%；17类workflow中16PASS、仅Feed性能FAIL。已根据同请求trace减少检查点的大块临时堆分配，保持全部授权／持久化保证，候选接口40%待新head CI。旧5bf交替Tail原因仍未定；手机25%与布局NOT_RUN。PR保持draft；未合并；未发布。
+- 状态：实现完成；SQL及接口p95≥40%两项硬门槛PASS。被测合成提交 `56531e79a6b51154296f2b0545b5181dd7792822` 与本地集成 `a01ae5e4a413b59b2ce998f964403659151c92b6` 的tree均为 `908d73fbfad52be350c08d78ca37055cdc8b956b`；42组／3780计时全有效、21/21比较PASS，17类产品／协作workflow全部PASS（适用SKIP保留）。手机25%与布局NOT_RUN，设备离线且旧租约过期；不能据软件结果关闭第三门槛。全部历史FAIL／invalid保留，旧5bf Tail原因未定。PR保持draft；未合并；未发布。
 
 ## 目标与范围
 
@@ -26,6 +26,22 @@
 - 适用Go／Flutter／API契约／真实PostgreSQL与产品CI，验证绑定被测SHA或基线＋明确差异。
 
 ## 当前进度与证据
+
+冻结对照始终为完整 `1d829b2623a6c32830ee1b74fae6c99a436ad3b3`，没有把当前legacy开关当旧source。当前产品版本为 `f6cc4c3` 加正常主线合并 `a01ae5e`；后者与实际PASS的CI synthetic `56531e7` 完全同tree。下表代表当前结果；后续各历史段落的FAIL／NOT_RUN仅对应其当时版本，不覆盖当前结论。证据均保留在 [E验证目录](E:/Hnuhole-env/req002-home-feed-validation-20261116/) 及 [手机工具目录](E:/Hnuhole-env/req002-device-20261116/)。未连接正式数据库或操作用户原App。
+
+| 当前项目 | 被测版本／范围 | 当前结果与证据 |
+| --- | --- | --- |
+| 来源与主线兼容 | CI `56531e7`＝本地 `a01ae5e`，tree `908d73f`；parents为f6与main `bf5c0ae` | PASS：正常merge对齐；新main仅评论同post回复计数约束、0048评论likes索引与迁移／CI／文档共8文件，无apps/packages变化。CI实际包含该主线，不能把结果写为纯f6 |
+| 最终安全与读链路 | Sol独立f6完整837项raw／Git执行位／symlink、实际644/755与media无go-w预检；真实独立PG `-race` | PASS：`sol-f6-fresh-source-01.json`、`sol-f6-focused-01.log`（authprivacy47.047s、HTTPS29.961s）。新buffer普通／8192上界所有权、后续解码及GC、精确V2签名／坏槽，六类／增量、fresh proof、角色及清理、Dart原／prepared路径通过；runtime/rankings未选中项不计覆盖 |
+| SQL硬门槛 | 实际native无图20／50、有图／编辑／清空及六类对照 | PASS：无图3条主体＋1最终counts＝4；有图4＋1＝5，均≤6，50条固定。准备／最终各1条fresh proof和固定authority另列；每请求1个最终checkpoint。阅读量计入主体总数，不按网络batch隐藏SQL |
+| 接口p95≥40%硬门槛 | 完整旧／新source，同61帖、同页大小／负载／环境，3轮、7路由、各10预热＋80正式 | PASS：42组／3780区间全有效、0 invalid、无错误，21/21≥40%；最低普通home10第3轮46.5097%。Sol从原zip逐条复算guard／raw p95／全部比较，`sol-f6-ci-independent-audit-02.json`；不删异常值、不选轮次 |
+| 实际10/5/5接口 | 三轮真实incremental协议；与上行同条数比较 | PASS：首页10提升60.7078／60.0833／58.4034%；旧续页5为49.5681／49.7526／50.0657%；刷新5为49.3357／52.2661／47.8146%。没有用20→10/5缩页收益代替同页40% |
+| 当前CI | [Feed43876403002](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43876403002)、[AuthGate43876403407](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43876403407)；按workflow_id去重latest | 17/17 completed/success。含host／OpenAPI／真实SQL／C/V与适用平台流水线；AuthGate authprivacy651.212s、HTTPS74.124s。适用SKIP原样保留，CI不替代手机或生产验收 |
+| 手机软件与隔离工具 | 完整1d App；debc主线控制App；5bf r6候选App；同r5注入与工具链／defines | 离线PASS：profile/AOT、真实FeedScreen widget与decode探针、11个统计／布局反例。全部输入等价证据支持App复用，appSource与serverSource分列；不是单客户端切backend flag。1d／3746／ef及f6的fresh HOST TLS／publish12／protected WEBP smoke保留，均已停止；bf5／a01新server fixture开测前再准备 |
+| 手机p95≥25%与布局 | Xiaomi15 `63005867`，固定设备／网络、完整版本矩阵 | NOT_RUN：ADB／PnP为空，旧lease20:19过期，未装机／清用户App／采样。正式home／older／refresh各10预热＋80原始样本；真实native PostStore、vault／网络／layout／hit-test／callback；每次刷新实际新增12帖。独立受控decode场景逐帧检查card与image全局Rect、scroll offset和idle，无主动滚动／导航 |
+| 合并与发布 | 草稿PR#11 | 未合并、未部署；既有授权仅覆盖任务分支push／draft PR／CI。三硬门槛仍缺手机，不标ready或发布 |
+
+### 历史首轮实施与验证（以下保留当时9eb等版本结果）
 
 证据目录：[本机验证产物](E:/Hnuhole-env/req002-home-feed-validation-20261116/)。冻结基线为 `1d829b2623a6c32830ee1b74fae6c99a436ad3b3`，本轮被测差异由目录内 `source-manifest.json` 绑定；承载相同产品内容的提交为 `9eb23a80b42d9b96e3eb9d33725db0c02999c8af`。SQL使用WSL2 Linux文件系统、本任务独立PostgreSQL（55552／55553私有socket）、Go1.22.2；Flutter3.47.5／Dart3.13.4，原pubspec.lock锁定且无依赖升级。真实媒体验证使用本任务独立Python环境及合成图片。未连接正式数据库。
 
@@ -195,11 +211,20 @@
 - 新所有权反证覆盖普通／8192字节最大payload、完整V2签名、调用方输入变动、连续原子改写／后续解码／GC后已返回JSON仍独立，两个返回payload互不别名。`ultra-ef-buffers-unit-02.log`原坏槽／签名组加新反证-race PASS15.975s；`ultra-ef-buffers-host-02.log`完整go test/build/vet与改动文件gofmt PASS。`ultra-ef-buffers-pg-02.log`真实一次性PG-race聚焦PASS 274.341s，包含C/V只读中断续行、回滚／错误前驱／冻结、临时证据中断、JSON/V1升级、部分写和损坏拒绝、memo新鲜读取及prepared六列表／九图／增量并发，未将无DSN的unit当PG证据。
 - 最终隔离副本`ef-buffers-final-01`从ef完整Git archive建立，`ultra-ef-buffers-source-final-02.json`核对837项：binary原bytes、明确UTF-8 shell LF、Git执行位和symlink；两个产品／测试覆盖单列，普通文件权限明确644／755，不带archive775／664的group写位。源码与最终D文件对应。该提交只修复已证明的大块分配，最终完整21项40%与手机25%／布局仍须独立验收。
 
+## 2026-11-16 f6独立验收通过与最终主线对齐
+
+- [Feed CI43876403002](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43876403002) 的actual source为 `56531e79a6b51154296f2b0545b5181dd7792822`，parents为main `bf5c0aecd6ef4f8c8ee0aa584c5ec9aaaf0bcabd` 和f6。正常merge `a01ae5e4a413b59b2ce998f964403659151c92b6` 与其tree精确同为 `908d73fbfad52be350c08d78ca37055cdc8b956b`。main新增8文件为评论同post回复计数条件、0048 likes索引与相关迁移断言／CI／文档，不改移动构建输入；本次只更新任务记录，不改被测产品文件，不重采正式轮。
+- Sol独立校验三zip SHA256并直接重算全部42组的90条guard及80条raw最近秩p95、21个降幅，无剔样／校正，`Complete/PASS=true`。原始 `ci-f6-feed-batch-performance.zip` SHA256 `9f66628f2a9cc3807ecda5da62dc68911166580080c1d6ef54b2868d29dcd34f`；timing为 `dbc8f9c2c191c9c07050eb9b1509693029ac40d27704ef97678bdd7166a51fd0`；tail为 `5d042266c255b5770d185cdc4126ccff652271b7419df6196bb430694ab5bd84`。审计产物 `sol-f6-ci-independent-audit-02.json`；首个只读工具要求Errors字面值[]而遇Go合法空slice的null，断言FAIL保留为01-fail，后续只兼容两种空集合，未改原data／guard／门槛。
+- 630诊断仍以 `Diagnostic=true/DiagnosticOnly=true` 独立保存，不能混入formal。该轮成功不证明旧5bf约0.4秒Tail已修；只确认已定位的大块分配被移除以及这一完整新轮达标。此前所有有效FAIL、invalid、原始zip、trace和未复现原因均保留。
+- Sol对13行buffer差异独立审查未见确定缺陷。新完整f6 archive的API＋全部infra＋packages共837项raw／链接目标匹配，模式明确644/755，媒体go-w要求在预检实际断言；没有全文件normalize。`sol-f6-focused-01.log`的ownership／最大长度／V2签名及native／真实PG／TLS聚焦PASS；未重复未变全C/V大套。此前ef聚焦原aggregate FAIL仅为archive775/664导致validator拒绝；mode-only修复记录在 `sol-ef-source-mode-repair-02.json`，只复验九图／geometry的02.log PASS6.079s，原aggregate未改称PASS。更早34个binary恢复与687项文本LF差异的历史证据也保留。
+- 完整移动输入复核支持App5bf r6／server f6（728项）及Appdebc／server3746（727项）的精确复用，Git树／raw／r5注入／SDK与CLI flags证据在手机目录；新main bf5不改apps/packages，后续控制server须使用完整bf5、最终server使用完整a01，不把旧3746／f6 runtime说成新server。旧软件HOST smoke分别在全新私有PG真实发布12帖、验证CA／hostname／受保护169686-byte WEBP后正常停止；本轮f6为15.385s，不是手机数据。新手机测量矩阵保留完整1d→最终25%总收益硬门槛，最新main→最终净收益独立报告，不新增第二25%门槛，也不把004收益说成002净收益。
+- 当前全部17类workflow成功；AuthGate完整步骤PASS，适用SKIP不扩大为验收。手机仍无设备且旧lease失效，安装／native storage device／触发→交互25%／真实decode布局均NOT_RUN。所有本任务测试／HOST fixture／构建进程已停止，未触用户原App、正式数据或生产环境。
+
 ## 阻碍与下一步
 
-此前的暂停及无设备BLOCKED证据保留；vivo旧租约已过期，用户已完成Xiaomi15（serial63005867）的调试授权，随后设备暂时离线，正式设备测量时再核对连接。当前手机25%及布局为NOT_RUN，小米旧租约已于20:19过期，开测须重新核对连接并取得本任务有效租约，不沿用旧设备授权。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`与本轮契约一致。独立Linux CI当前仍有两项小页不足40%；旧5bf Tail尚未确定原因，不能归为WSL或宣称已修，完整21项仍须通过。
+SQL与接口40%两项硬门槛已PASS，三项整体尚未完成。当前缺Xiaomi15（`63005867`）真实连接及本任务有效独占租约；旧租约20:19已过期，不能据旧授权安装。设备恢复时先由入口Session核对连接和归属／刷新租约，再启动独立`.req002`的smoke，用户原App不操作。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`未变。
 
-1. 三项硬门槛目前仅SQL通过；接口ef的全有效两项小页仍有FAIL，新候选待对应head的完整冻结旧版本三轮独立复测；手机NOT_RUN。任务不标记ready或发布。
-2. 保留所有无效／失败样本和40%门槛，观察同一CI请求阶段定位剩余成本；不调低计时守卫或以页大小缩减代替同页性能。完整原始源码基线及真实 `paging=incremental-v1` 测量保持不变。
-3. Astra Ultra定位与修复完成后，交回GPT-6.1 Sol XHigh独立验收，包括固定设备／网络的25%和图片布局检查；手机使用完整1d／当前main控制／最终候选三版本：1d→最终的25%总收益仍为硬门槛，main→最终净收益独立报告，不新增第二门槛。main3746的移动端输入与main47／debc一致，可复用已冻结控制APK，但控制服务端须更新为3746，不能混用旧服务端声称当前主线对照。
-4. 按已有授权推送本任务分支并跟进草稿PR和对应head产品CI。合并及正式部署仍未授权。
+1. 在完整bf5控制server／完整a01最终server来源与App输入等价证据更新后，使用新owned smoke fixture验证安装、native存储及真实UI／decode链路；不得沿用已消费publish/0或已停止的旧runtime／凭据。正式每版本再建固定61帖的新fixture，与smoke分离。
+2. 同一设备／网络／合成发布序列，完整1d、最新主线控制、最终候选三版本，home／older／refresh各10预热＋80正式原始样本；每次刷新真实发布12帖。保持原25%及既定手机时钟保守界，不剔样；单独受控图片decode全局Rect／滚动idle证据完整后才能关闭布局门槛。
+3. 保留所有历史FAIL／invalid和Tail原因未定的结论；不为文档提交重采接口性能，不把17类CI／HOST smoke／APK构建代替手机结果。任务仍不标ready或发布。
+4. 按已有授权推送本任务分支、由入口Session更新draft PR并跟进后续适用CI。远端合并和正式部署仍未授权。
