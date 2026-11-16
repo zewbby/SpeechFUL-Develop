@@ -1,0 +1,74 @@
+package authprivacyhttp
+
+import (
+	"encoding/json"
+	"encoding/pem"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/postmedia"
+)
+
+// Opt-in bridge for an isolated Android rendering measurement. Only this test's
+// private loopback fixture can change its derivative switch; no product route.
+func serveThumbnailDeviceFixture(t *testing.T, s *e2eServices, v *postmedia.ProcessValidator, root, token string) {
+	t.Helper()
+	if !filepath.IsAbs(root) {
+		t.Fatal("absolute owned device root required")
+	}
+	if e := os.MkdirAll(root, 0700); e != nil {
+		t.Fatal(e)
+	}
+	var mu sync.RWMutex
+	original := s.cPublic.Config.Handler
+	s.cPublic.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { mu.RLock(); defer mu.RUnlock(); original.ServeHTTP(w, r) })
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if r.Method != "POST" {
+			w.WriteHeader(405)
+			return
+		}
+		if r.URL.Path == "/stop" {
+			os.WriteFile(filepath.Join(root, "stop"), []byte("stop"), 0600)
+			w.WriteHeader(204)
+			return
+		}
+		next, e := s.c.WithPostImages(r.Context(), v)
+		if e == nil && r.URL.Path == "/reuse" {
+			next, e = next.WithPostThumbnailReuse(r.Context())
+		}
+		if e != nil || (r.URL.Path != "/reuse" && r.URL.Path != "/baseline") {
+			w.WriteHeader(503)
+			return
+		}
+		*s.c = *next
+		w.WriteHeader(204)
+	}))
+	defer control.Close()
+	chain := s.cPublic.TLS.Certificates[0].Certificate
+	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: chain[len(chain)-1]})
+	raw, e := json.Marshal(map[string]any{"community": s.cPublic.URL, "verifier": s.vPublic.URL, "control": control.URL, "certificatePem": string(ca), "token": token})
+	if e != nil || os.WriteFile(filepath.Join(root, "fixture.private.json"), raw, 0600) != nil {
+		t.Fatal("fixture export failed")
+	}
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	timer := time.NewTimer(30 * time.Minute)
+	defer timer.Stop()
+	for {
+		select {
+		case <-timer.C:
+			t.Fatal("device fixture timed out")
+		case <-ticker.C:
+			if _, e = os.Stat(filepath.Join(root, "stop")); e == nil {
+				return
+			}
+		}
+	}
+}

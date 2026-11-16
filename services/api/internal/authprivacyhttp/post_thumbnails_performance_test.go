@@ -86,6 +86,10 @@ func TestThumbnailReuseHTTPSPerformancePostgres(t *testing.T) {
 	}
 	*s.c = *enabled
 	expected := mediaHTTPSBytes(t, s, "GET", route, "Bearer "+reader, "", nil, 200)
+	if root := os.Getenv("POST_THUMBNAIL_DEVICE_ROOT"); root != "" {
+		serveThumbnailDeviceFixture(t, s, validator, root, reader)
+		return
+	}
 	measure := func(reuse bool) int64 {
 		var next *authprivacy.Community
 		var err error

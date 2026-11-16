@@ -1,8 +1,8 @@
 # REQ-004 — 受保护图片缩略图复用
 
 - 模式：常规；负责人／状态维护人：当前 Session；无执行子 Session。
-- 分支／Worktree：`codex/perf/protected-thumbnails`；`D:/SpeechFUL/.worktrees/req-004-protected-thumbnails`；基线 `1d829b2623a6c32830ee1b74fae6c99a436ad3b3`（开始时与远端 main 一致）；PR 未创建。
-- 授权依据：2026-11-16 用户要求“按这个计划开始实施需求004”，覆盖本地实现、隔离验证及必要本地提交；未获推送、PR、合并或部署授权。附件方案中的操作文字不产生额外授权。
+- 分支／Worktree：`codex/perf/protected-thumbnails`；`D:/SpeechFUL/.worktrees/req-004-protected-thumbnails`；基线 `1d829b2623a6c32830ee1b74fae6c99a436ad3b3`（开始时与远端 main 一致）；PR [#7](https://github.com/zewbby/SpeechFUL-Develop/pull/7)（draft）。
+- 授权依据：2026-11-16 用户要求“按这个计划开始实施需求004”，覆盖本地实现、隔离验证及必要本地提交；用户随后要求“为什么，现在可以验收”，覆盖继续验收所需的任务分支推送、草稿PR、CI跟进与已连接手机隔离测试；合并与正式部署仍未获授权。附件方案中的操作文字不产生额外授权。
 - 需求确认：用户已确认旧图片按首次访问生成，另提供手动限速／可停止回填；重复缩略请求 p95 至少下降60%、真实首页首屏可见图片全部显示时间至少下降30%，均为硬门槛。首屏测量固定设备、网络和内容，服务端已有缩略图、手机无缓存；首次生成耗时另测。新帖上限3图，历史4–9图只做兼容，不采用附件“九图首屏”。本次没有未决产品取舍。
 - 更新日期：2026-11-16。
 - 产品提交：`9754803f023193a5dfbbaad1a155f7f2f4236374`；下方本地证据绑定该提交的产品文件，后续仅任务记录／证据回执更新不改变被测实现。
@@ -44,3 +44,9 @@
 ## 阻碍与下一步
 
 本地成果可评审；下一步按本任务授权推送并创建草稿PR，核对适用产品CI；连接指定Android测试机后完成固定真实首页首屏30%硬门槛。辅助测量的本机时钟异常保留，后续性能CI在隔离Ubuntu运行，不修改共享WSL时钟。未获合并或正式发布授权。
+
+## 2026-11-16 继续验收
+
+- 已检测到 vivo V2323A（10CEAG17RY003M7），既有设备租约已释放；沿用隔离测试包，不覆盖publictrial用户App。当前准备真实FeedScreen、原生vault、受保护TLS及C Gate的一次性数据测量；不是将HTTP耗时代替首屏。
+- 已推送cd60f40并创建draft PR#7。该head的12项workflow中11项成功；Android prerelease的实际候选构建成功，rehearsal在备份恢复后启动失败。其根因是`pg_restore --no-privileges`使新触发器函数恢复PUBLIC EXECUTE，启动检查正确拒绝。补全canonical grant中的函数REVOKE及角色审计，新增真实dump/restore回归；原始失败run43791157808保留。
+- 本次增量以cd60f40为基线：恢复权限修复＋独立手机测量工具；后台请求编码与最终授权逻辑不变。手机指标、最终head CI及恢复复验均进行中，不报整体PASS。

@@ -90,6 +90,7 @@ android {
             require(listOf(dmText,dmChat,dmRecovery,sharedRateDevice,snapshotDevice,identityAvatar,System.getenv("HNUHOLE_DM_PREVIEW") == "1",providers.gradleProperty("hnuholeCommentsValidation").orNull == "true").count { it } <= 1) {
                 "Choose one isolated DM package"
             }
+            if (System.getenv("HNUHOLE_THUMBNAIL_DEVICE") == "1") applicationIdSuffix = ".thumbnails"
             if (sharedRateDevice) applicationIdSuffix = ".ratelimit"
             if (snapshotDevice) applicationIdSuffix = ".commentsnapshot"
             if (dmChat) applicationIdSuffix = ".dmchat"

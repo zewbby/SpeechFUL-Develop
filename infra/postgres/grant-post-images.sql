@@ -11,5 +11,9 @@ DO $$ BEGIN
   REVOKE ALL ON c_posts.thumbnails,c_posts.thumbnail_storage FROM PUBLIC,hnuhole_c_runtime,hnuhole_c_recovery,hnuhole_business;
   GRANT SELECT,INSERT,DELETE ON c_posts.thumbnails TO hnuhole_c_runtime;
   GRANT SELECT ON c_posts.thumbnail_storage TO hnuhole_c_runtime;
+  -- pg_restore --no-privileges restores default PUBLIC EXECUTE. Reapply the
+  -- trigger-only boundary as well as table grants before runtime startup.
+  REVOKE ALL ON FUNCTION c_posts.account_thumbnail_storage(),c_posts.erase_source_thumbnails()
+   FROM PUBLIC,hnuhole_c_runtime,hnuhole_c_recovery,hnuhole_business;
  END IF;
 END $$;
