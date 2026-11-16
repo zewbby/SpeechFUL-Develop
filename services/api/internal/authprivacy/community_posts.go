@@ -217,7 +217,12 @@ func (c *Community) withPostSessionAtPrepared(ctx context.Context, token [32]byt
 	a := credentialAccount{account: account}
 	var session credentialSession
 	var mute restriction
-	if account != uuid.Nil {
+	if account != uuid.Nil && expectedSessionGeneration != nil && c.nativePreparedReads() {
+		a, session, mute, err = lockPreparedPostSession(ctx, tx, account, token)
+		if err != nil && !errors.Is(err, ErrSessionInvalid) {
+			return result, ErrAuthorizationUnavailable
+		}
+	} else if account != uuid.Nil {
 		if err = tx.QueryRow(ctx, `SELECT state,session_generation FROM c_auth.accounts WHERE account_id=$1 FOR UPDATE`, account).Scan(&a.state, &a.generation); err != nil {
 			return result, ErrAuthorizationUnavailable
 		}

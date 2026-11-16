@@ -197,6 +197,12 @@ func TestFeedIncrementalRefreshInterleavingPostgres(t *testing.T) {
 	}
 }
 
+func (t *listCountingTx) SendBatch(ctx context.Context, batch *pgx.Batch) pgx.BatchResults {
+	// Count every SQL statement, not every network exchange.
+	t.queries += len(batch.QueuedQueries)
+	return t.Tx.SendBatch(ctx, batch)
+}
+
 func (t *listCountingTx) Query(ctx context.Context, s string, args ...any) (pgx.Rows, error) {
 	t.queries++
 	return t.Tx.Query(ctx, s, args...)
