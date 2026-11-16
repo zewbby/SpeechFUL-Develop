@@ -213,6 +213,25 @@ func (c *Community) preparePostSearch(ctx context.Context, account uuid.UUID, qu
 		return prepared, err
 	}
 	defer tx.Rollback(ctx)
+	useDocumentIndex := false
+	if c.posts.searchDocuments && query.PostID == "" && postSearchHasTrigram(query.Keyword) {
+		var ready bool
+		if err := tx.QueryRow(ctx, `SELECT ready AND normalization_version=pg_collation_actual_version('pg_catalog."und-x-icu"'::regcollation) FROM c_posts.post_search_document_state WHERE singleton`).Scan(&ready); err != nil || !ready {
+			return prepared, ErrAuthorizationUnavailable
+		}
+		useDocumentIndex, err = c.postSearchIndexSelective(ctx, tx, query.Keyword)
+		if err != nil {
+			return prepared, err
+		}
+		if useDocumentIndex {
+			// Keyword frequencies differ by orders of magnitude. Reusing a
+			// generic rare-word plan for a high-hit query can force expensive
+			// bitmap/row lookups; keep this setting local to the prepare tx.
+			if _, err := tx.Exec(ctx, `SET LOCAL plan_cache_mode=force_custom_plan`); err != nil {
+				return prepared, err
+			}
+		}
+	}
 	if err := requirePostSearchChannel(ctx, tx, query.ChannelID); err != nil {
 		return prepared, err
 	}
@@ -250,6 +269,9 @@ func (c *Community) preparePostSearch(ctx context.Context, account uuid.UUID, qu
 	candidateSQL := searchCandidatesSQL
 	if c.posts.typedSearchEnabled {
 		candidateSQL = typedSearchCandidatesSQL
+	}
+	if useDocumentIndex {
+		candidateSQL = indexedDocumentSearchCandidatesSQL
 	}
 	args := []any{query.Sort == posts.SearchRelevance, query.Keyword, position.Ceiling,
 		nullablePostID(query.ChannelID), preferences.BlockedChannelIDs, groups, lastAt,
