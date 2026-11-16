@@ -76,13 +76,23 @@
 | 真实HTTPS／Dart | PASS：`independent-http-dart-02.log`，固定完整test文件后聚焦复验关闭上述HTTP编译问题；真实增量12新帖5／5／2／0及最终拒绝、HTTP输入／响应形状，Dart original及prepared两路真实C HTTPS／PG均通过（29.831s，`-race`）。沿用同一未变化Dart产品源码的既有编译probe；不代表真机 |
 | 契约／工具 | PASS：`independent-openapi.log`完整13份OpenAPI、`independent-text-contract.log`29项静态保护契约、`independent-collaboration-tests.log`19项协作回归及3项性能Gate回归（含单组未达标、非法样本／时钟区间拒绝）。首轮OpenAPI因Windows默认cp1252失败保留在`independent-openapi-environment-fail.log`，UTF-8复验关闭 |
 | Host与冻结源码编译 | PASS：`independent-host-go.log`最终host go test／build／vet及测量文件gofmt；无DSN项仅SKIP。`independent-frozen-compile.log`证明同一test及计时helper在完整冻结源码中可编译，不冒充性能或真实SQL通过 |
-| 正式接口40% | NOT_RUN：正式前探针`independent-clock-pre.json`的30／30区间不满足预设守卫；Go相对RAW约−8.3%（1–100ms），1秒区间由−7.66%变至−4.61%，夹读不确定性仅0.899–21.970µs。runner在进入三轮前停止，未创建正式样本目录。`independent-performance-window.txt`保留负载；没有改系统钟、授时服务、clocksource或门槛，未将无效时钟样本冒充40%通过 |
+| 正式接口40% | 首次NOT_RUN：`independent-clock-pre.json`的30／30区间无效，runner在进入三轮前停止。后续正式三轮已完整执行，但计时Gate FAIL（环境无效，40%仍待验）：见下段；旧FAIL／invalid全部保留，没有改系统钟、授时服务、clocksource或门槛 |
 | 手机25%及布局 | NOT_RUN：此前ADB为空的BLOCKED证据保留；用户明确“换vivo了，继续吧”后已确认V2323A在线，取得REQ-002独占租约，04旧租约已释放并保存其快照。仅使用独立`.req002`测试包及自有合成fixture，尚未安装；未操作用户App或他任务隔离包。正式手机验收用完整冻结App＋服务端对当前完整App＋服务端，同机／网络／合成数据，分别记录实际条数和UI行为；不以同客户端切flag代替 |
 | 产品CI／合并／发布 | NOT_RUN／未合并／未发布：仍无本任务push／PR、合并或部署授权；独立Linux性能CI可作为后续资源路径，未自行触发 |
 
+### 最新main集成与完整三轮（2026-11-16）
+
+本地测试提交`45eb4d974d741cfe3247b340729fe15604020c51`保存上述独立结果；随后在干净工作区本地集成已合入004的`origin/main@d1a795d2c848e0d572eb71ac9fd0219df5f66ca0`，形成`e6b5ea4dcdf669652b7ca5674a8db86379d7c481`，未push。004的缩略图、vault及连接改进不能归因002；原完整冻结基线`1d829b2`和纯002 `64c019e`证据继续保留。`independent-integrated-source.json`核对591个API／契约／迁移文件；`integrated-host-compatibility.log`的runtime／posts／readtiming测试及全包build／vet PASS，`integrated-sql-http-compatibility.log`真实PG聚焦安全／六类SQL／分页／九图／prepared PASS（61.470s），真实HTTPS及两路既有Dart probe PASS（29.246s）；最终集成App的原生vault／连接与整机证据仍须另验。
+
+按“空闲后暂时slew可能消退”的新假设，仅复核同一预设时钟守卫，`independent-clock-recheck-after-idle.json`30／30 PASS（1–1000ms，Go／RAW偏差约0.002%–0.18%）；正式前`independent-clock-pre-integrated.json`亦30／30 PASS。因此在无本任务并行测试／构建窗口执行完整旧源码对照，source为`e6b5ea4`，测量test保持上述`7a0f3be9…`，未在测量期间修改被测文件。
+
+- **完整执行但环境无效：**`performance-journal-independent-01/`六份原始JSON共42个cohort、每个80测量样本（3360个）全部生成，另含全部预热和计时证据；HTTP、正文、标题、条数及新协议游标形状均通过。3780条时钟区间有705条不满足预设守卫，集中于legacy第2轮前三组和batch第3轮前六组；另有两条个别区间不合格。`comparison.json`如实拒绝并记录`invalid or failed cohort`，`independent-clock-post-integrated.json`29／30无效。整轮不能作为≥40%的有效验收，不剔除、校正或重跑这些样本。
+- **仅作缺口诊断：**有效单组中第1轮真实增量首屏10为50.953→34.047ms（约33.18%），刷新5为47.631→36.424ms（约23.53%），均低于40%；这不使无效的三轮整体变有效。`independent-performance-summary-diagnostic.json`保留逐组p95和无效计时数量；原始JSON及每轮环境文件同时保存在Linux owned目录与E证据目录。
+- **后续路径：**可信Windows原生外部HTTPS计时或独立Linux产品CI可补接口证据；授权前不push／创建PR。手机由独立物理设备计时，可继续准备，不能以guest RAW问题替代手机结果。25%正式归因采用完整`1d829b2` App＋服务端对完整纯002 `64c019e` App＋服务端；`e6b5ea4`作最终集成功能／布局和附加证据，不把004收益计入002独立门槛。
+
 ## 阻碍与下一步
 
-此前按用户要求在其他任务使用资源时暂停；2026-11-16用户明确要求04完成后通知02继续，随后明确“换vivo了，继续吧”，现已恢复。入口复核规则版本为AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`，与本轮契约一致。完整安全／SQL及HTTP回归已完成，本机独立时钟区间不一致待诊断，手机已在线待建立隔离测量资源。`origin/main`已前进至`d1a795d2c848e0d572eb71ac9fd0219df5f66ca0`（需求004），本分支未混入其缩略图／vault／连接改进；冻结性能基线仍为`1d829b2`，与最新main的后续集成兼容证据另行绑定。
+此前按用户要求在其他任务使用资源时暂停；2026-11-16用户明确要求04完成后通知02继续，随后明确“换vivo了，继续吧”，现已恢复。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`与本轮契约一致。完整安全／SQL及HTTP回归、最新main本地集成兼容回归已完成；正式接口三轮因运行期时钟失稳保持待验，手机已在线待完成隔离测量。
 
 1. 三项硬门槛目前仅SQL通过，接口性能FAIL、手机BLOCKED；任务未整体验收，不标记ready或发布。
 2. 继续只读诊断本机RAW／Go单调钟不一致；采用有效稳定时钟的完整冻结旧版本对照或独立Linux产品CI，保留所有无效／失败证据。候选未实测达标前不把旧FAIL关闭；真实 `paging=incremental-v1` 测量已纳入同一三轮Gate。
