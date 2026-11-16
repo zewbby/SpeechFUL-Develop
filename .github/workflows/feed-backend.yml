@@ -105,6 +105,25 @@ jobs:
           export REQ002_PERFORMANCE_DIRECTORY="$RUNNER_TEMP/feed-batch-performance"
           python3 services/api/authlab/test_compare_feed_performance.py
           sh services/api/authlab/run-feed-performance.sh
+      - name: Independent same-fixture tail diagnosis (never acceptance)
+        if: always()
+        env:
+          PGPORT: '55440'
+          FEED_TEST_RACE: '0'
+          FEED_TEST_PATTERN: '^TestRealHTTPSFeedTailDiagnosticPostgres$'
+          REQ002_TAIL_GO_TRACE: '1'
+        run: |
+          export PATH="$(pg_config --bindir):$PATH"
+          export FEED_GOOSE="$(go env GOPATH)/bin/goose"
+          export REQ002_SOURCE="$(git rev-parse HEAD)"
+          export REQ002_TAIL_DIAGNOSTIC_DIRECTORY="$RUNNER_TEMP/feed-tail-diagnostic"
+          sh services/api/authlab/run-feed-isolated.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: feed-tail-diagnostic
+          path: ${{ runner.temp }}/feed-tail-diagnostic/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()
         with:

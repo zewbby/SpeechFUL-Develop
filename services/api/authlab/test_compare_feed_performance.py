@@ -26,6 +26,9 @@ class PerformanceGateTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0 if expected else 1, result.stderr)
             self.assertEqual(report["PASS"], expected)
 
+    def test_rejects_instrumented_diagnostic(self):
+        self.check_gate(lambda data: data.update(Diagnostic=True), False)
+
     def test_every_cohort_must_pass(self):
         self.check_gate(lambda _: None, True)
         def fail_one(data):

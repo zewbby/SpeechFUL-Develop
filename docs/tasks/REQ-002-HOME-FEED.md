@@ -5,7 +5,7 @@
 - 授权依据与边界：2026-11-16 用户明确要求“按这个计划开始实施，完成六类列表批量读取和首页 10/5/5 分页，再按三项硬门槛验收”，授权隔离实现、必要本地提交和验证；随后明确回复“授权本任务推送、草稿 PR 和 CI（推荐）”，覆盖本任务分支后续必要push、草稿PR及产品／性能CI。不修改正式数据；远端合并和正式发布仍未授权。
 - 需求确认：用户 Q1 选择六类共用列表一起优化；Q2 选择三项均作硬门槛；后续明确首屏10条、刷新新增5条、续页5条；Q4 选择最新5条先显示、后续刷新补齐中间帖子。刷新不足5条按实际数量，无新帖保留已有列表。六类为首页、频道、作者、我的帖子、点赞、收藏；10/5/5 适用于首页及频道筛选，其他列表原页大小保留。热榜和搜索不扩大范围。
 - 更新日期：2026-11-16。
-- 状态：列表及分页实现已完成，SQL硬门槛PASS。f3bf7c3独立CI计时全部有效，21项对照17项PASS、4项小页仍低于40%；17类workflow中14类PASS，另有已定位的Gate测试注入缺陷及原因未确定的Redis AOF失败。Astra Ultra已完成同RR投影／证明批量与等价填充校验候选，修正真实故障注入并补充Redis失败观测；真实SQL／安全反证／HTTPS／host聚焦PASS，待对应head独立CI及GPT-6.1 Sol XHigh复核。手机25%与布局NOT_RUN。PR保持draft；未合并；未发布。
+- 状态：SQL硬门槛PASS。5bf＋main3746独立CI的42组／3780计时全部有效，实际10/5/5九项均达到40%；完整21项仅普通home10第3轮出现Tail而FAIL，17类workflow中16PASS、仅Feed性能FAIL。已对齐真实合成源码并增加独立因果诊断，尚未确定原CI Tail原因，本轮没有声称产品Tail修复。手机25%与布局NOT_RUN。PR保持draft；未合并；未发布。
 
 ## 目标与范围
 
@@ -172,11 +172,24 @@
 - `ultra-f3-projection-regression-04.log`并发双向block、hide/delete/profile、lookahead/filter/缺版本行、session/generation/cancel/ACK丢失、最多一次重建、非零fresh counts及增量10/5/5 `-race` PASS178.232s；真实HTTPS原路径／prepared／12新帖PASS29.007s。该pattern命中的ranking项因未启动其专用Redis明确SKIP，不冒充本轮热榜验收，本轮未修改其proof SQL／执行路径。`ultra-f3-host-04.log`完整go test/build/vet/gofmt PASS。`ultra-f3-source-final.json`核对809个services/api、infra/postgres、packages文件LF／链接内容与最终Windows源码一致，无临时诊断Go文件。
 - 唯一一次新候选60条HTTPS阶段诊断`ultra-f3-stage-05.json/.log`：0/60 clock有效，内容／传输／连接复用检查PASS，每请求proof2次、anchor_write1次。所有raw保留；没有同环境旧端，不计算或宣称40%收益。f3的17类CI最终14PASS、Feed性能／上述Gate测试／Redis AOF共3FAIL保留；新候选完整40%及对应产品CI待独立复验，手机25%与布局仍NOT_RUN。
 
+## 2026-11-16 源核对更正、5bf尾延迟与独立诊断
+
+- **更正旧源一致性证明范围：**早期`ultra-sync-run.sh`及后续806/808/809文件manifest把所有文件统一CRLF→LF，没有区分binary；symlink也未按Git mode严格核对。因此上述“最终源码一致”只能证明规范化后的内容一致，不能作为原binary一致证据。Sol发现34个`packages/image_viewer/example`的Android／iOS图标和示例图被该操作改变，已备份、按5bf archive原bytes恢复并逐项raw／textLF／mode检查；原失败和修复记录见`sol-5bf-binary-source-diagnostic-01.json`、`sol-5bf-linux-binary-restored-01.json`、`sol-5bf-source-raw-manifest-04.json`。
+- 影响边界经Sol独立核实：API/Go没有引用或embed这34个示例图；API媒体测试使用另行生成且SHA一致的3×2 fixtures，手机fixture图也独立生成。旧Go／SQL执行证据不依赖这些受损assets，不冒充曾验收示例图binary。E的完整App档案每版227个binary仍与各自Git archive原bytes一致；CI原生checkout不经过该脚本。`sol-5bf-binary-impact-and-phone-ci-inputs-01.json`保存路径／摘要。恢复后才运行的Sol独立真实PG PASS86.843s、HTTPS PASS32.727s、完整5bf r6 profile构建PASS44.3s，均不是手机验收。
+- [Feed CI 43863543390](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43863543390)实际source `1ecea4ac7bcd365fb29fb67d47a46d1901a4e57c`是5bf合入main `3746d5a54b643767b99b929ca6e0e6b072c7627e`，不是纯5bf。Git Data API确认tree `5ae266a119a349a4230c3bc3363320635330b12e`，parents为main3746及5bf。正常本地merge `4b5106ad5feffa66a9ec625cd0fa8b1976206ba7`与其tree完全一致；18个集成文件来自REQ006 DM目录和迁移／运行配置，无app/packages差异。此合并只对齐来源，原FAIL仍适用，冻结1d不变。
+- 42组、3780计时全部有效，Complete=true／PASS=false，21项20PASS。实际incrementalHome10提升61.26/61.44/53.19%，incrementalNext5 46.93/55.78/68.21%，incrementalRefresh5 48.41/49.19/48.44%；唯一FAIL是普通home10第3轮old5.723557ms／new12.741183ms。新端80个正式样本有24个超过5ms，主要在前44个样本呈2.4–3ms与10–16ms交替，随后同路径回到2.1–2.8ms附近，预热也有慢请求。不能删除这些样本、只重跑此组或继续假定缺几十微秒稳态开销。
+- 原始`ci-5bf-feed-batch-performance.zip` SHA256 `9ED74450D2C2699788F0652D5BCE80BA15EDFE74C21C9C94C1CAC6AAB80B1C55`，`ci-5bf-feed-request-timing.zip` SHA256 `73FDA4B98A4356205A0EFAEFAAC4CA0D0508797DA4F551C70305716A33F569DA`均完整保留。17类workflow最终16PASS，仅Feed formal FAIL；[AuthGate 43863543374](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43863543374)完整PASS，[CommentRedis 43863543452](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/43863543452)AOF实际PASS0.13s、SQL/session/contract PASS，actual-process-acceptance按配置SKIP。Redis底层原因仍未复现，不宣称已修复。
+- 本轮只新增诊断：正式函数传nil observer，原49＋12帖子fixture、七路由顺序、每组10预热＋80样本、RAW/Go夹读、全部21比较及40%不变。独立diagnostic复用同一测量实现，标记Diagnostic=true，记录全部630请求的同请求readtiming、连接等待／复用／首字节、runtime/metrics GC和调度分布、进程CPU／上下文切换／IO与系统pressure累计数。计数在原区间外采集，差值也包含采集开销，不能脱离execution trace直接断定某次GC发生于请求内部。每请求不落盘；可选Go trace最多32MiB内存缓冲，结束后写，截断显式标记。固定路由／序号trace标记不含token、头、参数、SQL参数、cmdline或environ。
+- CI因果诊断在原正式三轮之后以always执行并独立保存`feed-tail-diagnostic`，避免诊断先影响formal负载。比较器仅收紧为拒绝Diagnostic标记，补反例，其他公式／原样本／门槛不变。即使后续正式新轮全绿而Tail未再现，也只能分别报告新轮结果和原因未确定，不能把诊断提交称为产品修复。
+- 一次本地`ultra-tail-01`完整诊断PASS20.411s：630/630内容、连接复用与clock guard有效，均proof2／anchor1；trace3068459字节、未截断，前＋后计数采集median223.28µs在区间外。最大181.84ms请求同请求server181.53ms，其中anchor_write66.61ms、sql_commit111.05ms，GC完成周期差0（不能排除请求前已开始的并发mark、assist或scavenger，仍须结合trace／CPU类别计数）；这是本机阶段归因闭环，不解释另一环境原CI的0.4秒Tail。全部raw、指标和trace保留，没有再采630。该本地trace尚无后加的固定route/index标记；标记和明确diagnostic-only日志随后经host编译检查，CI将按最终head生成。
+- 新隔离副本从4b Git archive建立，binary一律原bytes，只有明确UTF-8 shell转换LF，symlink目标及Git类型／执行位逐项验证；最终`ultra-tail-source-final-04.json`核对836文件，两个Go诊断文件及两份比较器文本覆盖单列，未再统一normalize。原fresh副本首轮host `ultra-tail-host-02.log`因漏入infra/commentsnapshot、infra/ratelimit已提交模板而FAIL；补齐完整infra原bytes后`ultra-tail-host-03.log`完整go test/build/vet/gofmt及只读计数器PASS，旧失败保留。后续可选trace→pprof工具未产出profile、启动了查看器，已停止自有helper并确认端口关闭；raw trace未改。
+- `ultra-tail-baseline-compile-04.log`在新建的冻结1d API／infra原bytes副本，仅覆盖与正式CI相同的共享测量文件及两份clock helper，`go test -run '^$'`编译PASS，不是运行性能；`ultra-tail-compare-04.log`4项比较器测试PASS，含诊断数据拒绝反例。该提交仍是来源集成与诊断能力，原CI Tail原因未定，手机25%／布局仍NOT_RUN。
+
 ## 阻碍与下一步
 
-此前的暂停及无设备BLOCKED证据保留；vivo旧租约已过期，用户已完成Xiaomi15（serial63005867）的调试授权，随后设备暂时离线，正式设备测量时再核对连接。当前手机25%及布局为NOT_RUN，设备由当前本任务租约协调，不沿用旧vivo授权。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`与本轮契约一致。独立Linux CI已确认小页性能缺口，不能再将其仅标为WSL计时阻碍。
+此前的暂停及无设备BLOCKED证据保留；vivo旧租约已过期，用户已完成Xiaomi15（serial63005867）的调试授权，随后设备暂时离线，正式设备测量时再核对连接。当前手机25%及布局为NOT_RUN，设备由当前本任务租约协调，不沿用旧vivo授权。规则版本AGENTS `a4d7228a0dd4b91e851746ab7f9fb37d1ec806b5`／CONTRIBUTING `9937638c077bf2da7d51daa5de13a83645dc4320`与本轮契约一致。独立Linux CI已确认普通home10 Tail，不能将其标为WSL计时阻碍；实际10/5/5九项已达40%，完整21项仍须通过。
 
-1. 三项硬门槛目前仅SQL通过；接口f3的全有效小页仍有FAIL，新候选待对应head的完整冻结旧版本三轮独立复测；手机NOT_RUN。任务不标记ready或发布。
+1. 三项硬门槛目前仅SQL通过；接口5bf＋main3746的全有效普通home10 Tail仍有FAIL，新候选待对应head的完整冻结旧版本三轮独立复测；手机NOT_RUN。任务不标记ready或发布。
 2. 保留所有无效／失败样本和40%门槛，观察同一CI请求阶段定位剩余成本；不调低计时守卫或以页大小缩减代替同页性能。完整原始源码基线及真实 `paging=incremental-v1` 测量保持不变。
-3. Astra Ultra定位与修复完成后，交回GPT-6.1 Sol XHigh独立验收，包括固定设备／网络的25%和图片布局检查；手机使用完整1d／当前main控制／最终候选三版本：1d→最终的25%总收益仍为硬门槛，main→最终净收益独立报告，不新增第二门槛。main 47的移动端输入与debc一致，可复用已冻结控制APK配47服务端，不能混用旧服务端声称当前主线对照。
+3. Astra Ultra定位与修复完成后，交回GPT-6.1 Sol XHigh独立验收，包括固定设备／网络的25%和图片布局检查；手机使用完整1d／当前main控制／最终候选三版本：1d→最终的25%总收益仍为硬门槛，main→最终净收益独立报告，不新增第二门槛。main3746的移动端输入与main47／debc一致，可复用已冻结控制APK，但控制服务端须更新为3746，不能混用旧服务端声称当前主线对照。
 4. 按已有授权推送本任务分支并跟进草稿PR和对应head产品CI。合并及正式部署仍未授权。

@@ -21,6 +21,7 @@ try:
     for round_number in range(1, 4):
         for mode in ("legacy", "batch"):
             data = json.loads((root / f"{mode}-{round_number}.json").read_text())
+            require(not data.get("Diagnostic", False), "diagnostic samples cannot be used for acceptance")
             require(data["Complete"] and data["Warmup"] == 10 and data["Samples"] == 80 and data["Rounds"] == 1, "incomplete or changed measurement protocol")
             require(data["Threshold"] == .40 and len(data["Cohorts"]) == len(KINDS), "changed threshold or cohort count")
             require(data["Clock"] == "CLOCK_MONOTONIC_RAW", "wrong endpoint interval clock")
