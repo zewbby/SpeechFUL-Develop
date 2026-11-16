@@ -26,7 +26,18 @@ func serveThumbnailDeviceFixture(t *testing.T, s *e2eServices, v *postmedia.Proc
 	}
 	var mu sync.RWMutex
 	original := s.cPublic.Config.Handler
-	s.cPublic.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { mu.RLock(); defer mu.RUnlock(); original.ServeHTTP(w, r) })
+	// Dart's TLS stack requires the same ECDSA fixture used by other mobile
+	// integration tests; the regular Go-only fixture uses Ed25519.
+	config, e := PublicTLSConfig(mobileLabCertificate(t))
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.cPublic = e2eServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.RLock()
+		defer mu.RUnlock()
+		original.ServeHTTP(w, r)
+	}), config)
+	s.vPublic = e2eServer(t, s.vPublic.Config.Handler, config.Clone())
 	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
