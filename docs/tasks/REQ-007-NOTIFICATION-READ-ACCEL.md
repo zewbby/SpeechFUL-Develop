@@ -3,7 +3,7 @@
 - 模式：常规
 - 负责人／状态维护人：当前 Session
 - 执行 Session（指挥模式）：无
-- 分支／Worktree／PR：`perf/notification-read-accel` @ `E:\speechful-notif-accel`；实现提交 `44243ca`；旧集成提交 `743cc4c`（按 #4 `a25aa8b` → #6 `44f07a4` → #5）；冲突修复合并 #6 head `591b7ba`（含 `main@3746d5a`）；PR [#5](https://github.com/zewbby/SpeechFUL-Develop/pull/5)（open，base `perf/comment-load-accel`，未合并）
+- 分支／Worktree／PR：`perf/notification-read-accel` @ `E:\speechful-notif-accel`；实现提交 `44243ca`；旧集成提交 `743cc4c`（按 #4 `a25aa8b` → #6 `44f07a4` → #5）；冲突修复合并提交 `633b287`（合并 #6 head `591b7ba`，内含 `main@3746d5a`）；PR [#5](https://github.com/zewbby/SpeechFUL-Develop/pull/5)（open，base `perf/comment-load-accel`，未合并）
 - 本轮规则版本（指挥模式）：不适用
 - 授权依据与边界：用户 2026-11-16 指令“继续完成07优化”（需求行“通知列表与未读统计优化”）及“完成后向仓库提交pr”；#6 冲突修复后用户选择“接手修复 #5”，授权将最新 #6 合入本分支、解决冲突并把迁移重编号为 0049。授权范围为定位、实现、隔离库验证、本地提交、推送本任务分支并维护 PR；未授权合并、部署、发布或改动正式数据。
 - 需求确认：用户已确认优化对象为通知列表与未读统计读取。读取口径沿用现有产品语义：互动通知按当前身份过滤，系统通知按账号共享；COMMENT 未读为 `read_version=0`，LIKE 未读为存在版本大于 `read_version` 的点赞事件；取消点赞不回退 `version`，已读历史由 `seen_like_count` 保留。无未决取舍。
@@ -48,7 +48,7 @@
 | 查询计划 A/B | 同一隔离数据集副本：50,000 条互动记录、120,000 条点赞事件、5,000 条系统通知；账号 5 个身份；VACUUM ANALYZE 后热缓存 | 未读统计（选中身份 + 账号级逐身份）：160.5 ms → 7.4 ms（分组 6.9 ms + 系统 0.5 ms）；全部列表：50.7 ms → 16.9 ms；未读列表：75.1 ms → 6.7 ms。基线每条 LIKE 通知一次 `like_events` 探测（选中 24,000 次、账号级 40,000 次），最终统计走 `inbox_unread` Index Only Scan（324 buffers），未读列表同样命中该索引 |
 | 等价性 | 同上 A/B 库 | 各身份未读数与系统计数逐项一致；全部列表与未读列表前 21 条 ID/时间逐行 `diff` 一致 |
 | 集成验证（合并 #6 前） | 旧集成提交 `743cc4c`（#4 `a25aa8b` → #6 `44f07a4` → #5），WSL2 Ubuntu-24.04 / PostgreSQL 16，隔离 fixture；Go 1.22.2 | PASS：迁移账本 45/45（DM fresh/upgrade、feed 7 模式、avatar、通知 fresh/upgrade）；DM 目录重建 7 子测试、索引回滚/重放、迁移版本唯一性；评论/通知 CI 聚焦集（`TestCommentText*`、`TestCommentBusiness*`、`TestNotificationInbox*`、`TestInboxRoutesAndDisabledMentionsBoundary`、moderation 迁移集）全部 PASS；`go build ./...`、`go vet`、LF 副本 `gofmt -l` 无输出 |
-| 合并 #6 与迁移重编号 | `perf/notification-read-accel` 合并 `591b7ba`；WSL2 Ubuntu-24.04 / Go 1.22.2 | PASS：冲突 5 处（comments CI 路径、CHANGELOG、3 个迁移测试断言），已取 #6 的 0048 版本并改为 49；`0045_notification_read_indexes.sql` 重命名为 `0049_notification_read_indexes.sql`，通知迁移测试、inbox 注释与 CI 路径同步；相对 #6 的最终差异 10 个文件、无冲突标记 |
+| 合并 #6 与迁移重编号 | 合并提交 `633b287`，合并 #6 head `591b7ba`；WSL2 Ubuntu-24.04 / Go 1.22.2 | PASS：冲突 5 处（comments CI 路径、CHANGELOG、3 个迁移测试断言），已取 #6 的 0048 版本并改为 49；`0045_notification_read_indexes.sql` 重命名为 `0049_notification_read_indexes.sql`，通知迁移测试、inbox 注释与 CI 路径同步；相对 #6 的最终差异 10 个文件、无冲突标记 |
 | 合并后静态检查 | 同上 | PASS：改动 Go 文件 `gofmt` 无输出；`go build ./...`；`go vet ./internal/authprivacy ./internal/authprivacyruntime ./internal/authprivacyhttp` |
 | 合并后迁移链 | 同上，隔离 PostgreSQL 16 lab | PASS：`TestNotificationInboxGooseMigrationPostgres` fresh/upgrade 均为 49；`TestDMGooseFreshAndUpgradePostgres` fresh/upgrade 均为 49；`TestFeedGooseFreshAndUpgradePostgres` 七个环境均为 49；`TestIdentityAvatarGooseFreshAndUpgradePostgres` fresh/upgrade 均为 49；`TestMigrationVersionsAreUnique` PASS |
 | 合并后通知回归 | 同上 | PASS：`TestNotificationInboxPostgres`、`TestNotificationInboxIdentityPaginationPostgres`、`TestNotificationInboxHTTPSPostgres`、`TestInboxRoutesAndDisabledMentionsBoundary` |
