@@ -1,7 +1,7 @@
 # CAMPUS-CATEGORIES-20261114 - 优化校园分类
 
 - 模式：常规；负责人／状态维护人：当前 Session。
-- 分支／Worktree／PR：`codex/feat/campus-category-labels-reopen`；`C:/Users/34408/.codex/worktrees/campus-category-labels-reopen/SpeechFUL.git`；新 PR 待创建。当前基线为 `zewbby/SpeechFUL-Develop` 的 `main@315f1513f9362013956676234cd6ef40c1d234b5`，远端别名 `develop`；公开 `origin` 保留，未向其推送。
+- 分支／Worktree／PR：`codex/feat/campus-category-labels-reopen`；`C:/Users/34408/.codex/worktrees/campus-category-labels-reopen/SpeechFUL.git`；[PR #17](https://github.com/zewbby/SpeechFUL-Develop/pull/17)。当前基线为 `zewbby/SpeechFUL-Develop` 的 `main@315f1513f9362013956676234cd6ef40c1d234b5`，远端别名 `develop`；公开 `origin` 保留，未向其推送。
 - 授权依据与边界：用户要求“分类的那个重新 PR 一下”，并明确不直接改动 `main`。授权本任务基于最新 `main` 重建分类分支、解决合并差异、验证、提交、推送任务分支并创建新 PR。不合并、不部署、不修改正式数据，不覆盖其他分支的未提交改动。
 - 需求确认：用户逐项指定七个原分类的新名称及三个新增分类，按提供顺序展示；后续明确将“海大安利”改为“吐血推荐”，其余分类保持不变。原分类保留 UUID 和 code，不迁移旧帖归属。示例说明分类语义，不自动建立固定主题标签或内容分类器。沿用既有布局、浏览与发帖独立选择、初始可见标志和权限检查；所有十类均可在完整目录选择。新增三类沿用非首批分类的初始标志，不自动改变用户筛选。无未决产品取舍。
 - 更新日期：2026-11-17。
@@ -88,4 +88,4 @@ Flutter 文件清单：`campus_categories_test.dart`、`publish_category_test.da
 
 ## 阻碍与下一步
 
-分类行为已从最新 `main` 重建到独立分支，等待新 PR 创建与 CI；历史 PR #151 不再作为交付载体。人工进程验收、真机和生产不冒充通过，不自动触发历史延期任务。迁移不支持向下回滚；部署时必须安排旧客户端更新，先交付兼容七／十分类的新客户端，再协调后端迁移和完整服务端切换；不能将旧七分类客户端直接视为十分类兼容。无合并或正式部署授权。
+分类行为已从最新 `main` 重建到独立分支，[PR #17](https://github.com/zewbby/SpeechFUL-Develop/pull/17) 已创建，后续状态以 PR 检查为准；历史 PR #151 不再作为交付载体。人工进程验收、真机和生产不冒充通过，不自动触发历史延期任务。迁移不支持向下回滚；部署时必须安排旧客户端更新，先交付兼容七／十分类的新客户端，再协调后端迁移和完整服务端切换；不能将旧七分类客户端直接视为十分类兼容。无合并或正式部署授权。
