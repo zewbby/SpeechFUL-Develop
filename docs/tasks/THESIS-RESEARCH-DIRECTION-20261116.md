@@ -1,11 +1,11 @@
 # THESIS-RESEARCH-DIRECTION-20261116 — 固化研究方向与产品改造依据
 
 - 模式：常规；负责人／状态维护人：当前 Session。
-- 分支／Worktree／PR：`codex/docs/thesis-research-direction`；仓库内 `.worktrees/thesis-research-direction`；PR 待创建。原代码核对基线 `fed946b0d67dceb8ef9e27cd57310cf9ef9e7b40`；本轮已 fetch 并合入最新 `origin/main` 的 `41961b4`，用于合并兼容性检查，研究正文仍与已评估版一致。
+- 分支／Worktree／PR：`codex/docs/thesis-research-direction`；仓库内 `.worktrees/thesis-research-direction`；[PR #15](https://github.com/zewbby/SpeechFUL-Develop/pull/15)。原代码核对基线 `fed946b0d67dceb8ef9e27cd57310cf9ef9e7b40`；本轮已 fetch 并合入最新 `origin/main` 的 `41961b4`，用于合并兼容性检查，研究正文仍与已评估版一致。
 - 授权依据与边界：用户要求持久化、推送研究方案，并要求一个 Astra Ultra 子代理评估、通过后采用；最新明确“合并，然后我们的研究就按照这个方案来，其他之前做过的什么方案都删了，只按照这个”。本轮授权创建／合并研究文档 PR、删除被取代的旧研究方案及入口，保留当前唯一正文和评估证据；不包含产品代码改造、正式数据修改或部署。
 - 需求确认：保留题目中的“匿名”；社区验证方平时不掌握同账号多个长期假名的关系，但同一资格撤销一致约束后续受保护操作。邮箱与账号资格可查询，APP 登录后切换假名。身份追踪与邮件通知不纳入论文核心。产品改造按论文目标推进，本轮保存现状差距和分阶段路线。用户进一步提出期刊投稿目标，正文增加成文条件、投稿风险和先验证贡献再扩大改造的判断节点；后续恢复、迁移、串通及跨身份业务边界见研究文档，未决事项不阻塞本轮文档交付。
 - 更新日期：2026-11-17。
-- 状态：实现 已完成（v1.0 唯一研究方案与旧分支清理）；验证 独立方案复核 PASS、合并前文档复验 PASS；合并 待 PR 检查；发布 未发布。
+- 状态：实现 已完成（v1.0 唯一研究方案与旧分支清理）；验证 独立方案复核 PASS、合并前文档复验 PASS，远端 CI 见 PR；合并 已明确授权、实际状态及合并提交以 PR #15 为准；发布 未发布。
 
 ## 目标与范围
 
@@ -49,6 +49,7 @@
 | 主分支兼容性 | 已合入 `origin/main` 的 `41961b4`；任务合并提交 `7fbc4ad` | PASS；无合并冲突；相对最新主分支仅文档差异，保留主分支已有产品更新；正文内容与 `ee66c82` 相同 |
 | 旧研究方案清理 | 旧两项机制分支 `codex/docs/thesis-proposal-align-20261117`，最后提交 `75badee8beca96e485afde396481ff0aef5c2f93` | PASS；确认仅有两份论文文档修改、工作区含忽略项检查干净、无 PR；已删除该旧远端分支、本地分支和对应工作区，未复制旧方案至当前目录 |
 | 唯一入口与合并前复验 | `7fbc4ad` 加 AGENTS、两个文档索引和任务记录差异；Python 只读检查关联 6 份 Markdown 文件；`git diff --check` | PASS；50 个本地链接／锚点、5 个代码块、表格、编码和差异空白；研究正文 SHA-256 仍为 `389F5321D63891F68F10D8BDC693E910D63B8326EE1CF56532792A3B402F3CB5`，与独立复核内容相同 |
+| PR 与提交范围 | [PR #15](https://github.com/zewbby/SpeechFUL-Develop/pull/15)；相对基线 `41961b4` 的 6 份 Markdown 文档；`python tools/check-collaboration.py --base origin/main --head HEAD` 与暂存检查 | 本地 PASS；PR 最终 head 的远端检查、实际合并状态与提交由 PR 页面记录；只有适用检查通过且 head 未变化才执行已授权合并，不以本地文档检查替代远端检查 |
 | 产品／密码实验 | 本轮无产品代码改动 | NOT_RUN；不以文档检查替代协议或产品验收 |
 
 ## 独立评估与修订
