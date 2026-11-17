@@ -54,4 +54,7 @@
 
 - 首轮 head `10f3869` 的 Auth feedback、Android candidate、iOS compile 等通过；跨模块 CI 暴露新增 0051 后，历史迁移测试仍将 0050 当作最新，以及冻结 C39 夹具缺少新的强制认证表。
 - 仅调整相关回归：最新链路预期为 0051；回滚目标明确为 0049，允许先撤销可逆的 0051，再验证 0050 仍拒绝破坏历史事实。旧 C39 无新认证 schema 必须启动拒绝；只补认证 0051 并记真实 ledger／最小权限后可启动，仍不依赖可选读取加速表。产品认证和界面代码未变化。
-- PASS：私有一次性 PostgreSQL 中通知／头像新建与升级、私信新建与升级、首页七种升级起点、认证权限及独立于可选读取加速的启动；`ci-fix-notice-avatar.log`、`ci-fix-dm.log`、`ci-fix-feed.log`、`ci-fix-runtime.log`。更新后远端 CI 待验，不将首轮有失败的整组 CI 记为 PASS。- 完整 Gate 回归另发现新增表尚未进入精确隐私清单。已审计并加入 C 的用户名带密钥摘要／失败计时、V 的限时挑战／证明摘要；原禁止字段与跨方 schema 限制保持。实际通过密码失败、挑战和解题路径填充三表后，检查 C 无校邮／V 安装信息、V 无账号／身份／密码／C 安装信息；`ci-fix-privacy.log` PASS。最小权限审计对 C 失败表仅允许 SELECT／INSERT／UPDATE，对 V 滑块两表仅允许 SELECT／INSERT／DELETE，不对新增表套用通用 CRUD 放行。
+- PASS：私有一次性 PostgreSQL 中通知／头像新建与升级、私信新建与升级、首页七种升级起点、认证权限及独立于可选读取加速的启动；`ci-fix-notice-avatar.log`、`ci-fix-dm.log`、`ci-fix-feed.log`、`ci-fix-runtime.log`。更新后远端 CI 待验，不将首轮有失败的整组 CI 记为 PASS。
+- 完整 Gate 回归另发现新增表尚未进入精确隐私清单。已审计并加入 C 的用户名带密钥摘要／失败计时、V 的限时挑战／证明摘要；原禁止字段与跨方 schema 限制保持。实际通过密码失败、挑战和解题路径填充三表后，检查 C 无校邮／V 安装信息、V 无账号／身份／密码／C 安装信息；`ci-fix-privacy.log` PASS。最小权限审计对 C 失败表仅允许 SELECT／INSERT／UPDATE，对 V 滑块两表仅允许 SELECT／INSERT／DELETE，不对新增表套用通用 CRUD 放行。
+- head `e402e53`：17 组远端 CI 中 16 组 PASS（包括完整 Authorization Gate、Auth feedback、Android candidate、iOS build、搜索性能）；Android prerelease 的真实恢复演练 FAIL，原因是旧 runtimeprobe 直接请求发码而未提交新必需的滑块证明。
+- 演练工具改走公开挑战／解题／发码 HTTPS 接口；仅带任务 marker 的隔离 loopback V runtime 连接可读取该工具刚申请的挑战答案，C/V 连接和密码分别传递，生产服务不增加解题或绕过接口。Go race／vet／build 与 Python 工具回归 PASS（`ci-fix-runtimeprobe.log`、`ci-fix-prerelease-tools.log`；7 项需独立 SQL 选择加入的用例 SKIP），完整恢复演练与更新 head CI 待验。
