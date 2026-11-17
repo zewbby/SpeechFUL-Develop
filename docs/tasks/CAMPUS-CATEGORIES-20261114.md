@@ -84,7 +84,7 @@ Flutter 文件清单：`campus_categories_test.dart`、`publish_category_test.da
 - `flutter analyze --no-pub`：PASS；分类和关联 125 项通过；`auth_api_test.dart` 在 PATH 加入已有 Git OpenSSL 后 53 项 PASS。
 - `python -m unittest discover -s tools/prerelease/tests -v`：18 项运行，10 项 PASS、8 项按条件 SKIP。
 
-真实 SQL、Android 和真机验收未在本机冒充通过，由新 PR 的产品 CI 继续验证。
+PR #17 首轮产品 CI：`mobile-snapshot` 在测试启动前因 Ubuntu apt 源 SSL 超时失败；`feed-postgres` 的产品测试和所有 P95 均通过，仅第 3 轮 `home10/batch` 的 1 个时钟区间出现 runner 计时不一致。两个失败 job 均已单独重跑并转为 success。最终 head `640dea4` 为 29 项 success、0 项 failure、1 项既有条件 SKIP。真实 SQL、Android 和真机验收未在本机冒充通过，产品 CI 证据以该 head 为准。
 
 ## 阻碍与下一步
 
