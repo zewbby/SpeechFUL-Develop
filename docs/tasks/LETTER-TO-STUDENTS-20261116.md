@@ -1,11 +1,11 @@
 # LETTER-TO-STUDENTS-20261116 - 致同学的一封信
 
 - 模式：常规；负责人／状态维护人：当前 Session。
-- 分支／Worktree／PR：`codex/fix/guest-letter-entry`；`E:/code_collection/java_code/SpeechFUL.git`；基于 `develop/main@315f1513f9362013956676234cd6ef40c1d234b5`；本轮 PR 待创建。此前统一 PR [#8](https://github.com/zewbby/SpeechFUL-Develop/pull/8) 已合并，其登录首页按账号展示方案由本轮取代。
+- 分支／Worktree／PR：`codex/fix/guest-letter-entry`；`E:/code_collection/java_code/SpeechFUL.git`；基于 `develop/main@315f1513f9362013956676234cd6ef40c1d234b5`；本轮 PR [#19](https://github.com/zewbby/SpeechFUL-Develop/pull/19)。此前统一 PR [#8](https://github.com/zewbby/SpeechFUL-Develop/pull/8) 已合并，其登录首页按账号展示方案由本轮取代。
 - 授权依据与边界：用户要求调整弹窗主题、仅未登录展示、移除设置入口，并重新创建 PR。覆盖本任务开发、验证、提交、推送和 PR；合并、发布未授权。
 - 需求确认：2026-11-17 用户明确要求弹窗使用 App 现有蓝色主题，按钮、组件和字体与 App 一致；仅在未登录状态弹出；移除侧滑设置中的入口。此前确认的文案、“我已阅读”按钮及正文滚动到底后才能确认保持不变。
 - 更新日期：2026-11-17。
-- 状态：实现与本机聚焦验证完成；PR、产品 CI、原生设备及生产验收待完成或未运行。
+- 状态：实现与本机聚焦验证完成；PR #19 已创建，产品 CI 以 PR 当前 head 为准；原生设备及生产验收未运行。
 
 ## 目标与范围
 
@@ -50,12 +50,13 @@ SpeechFUL项目组
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
 | 分支基线 | `develop/main@315f1513f9362013956676234cd6ef40c1d234b5`；Windows | PASS：`codex/fix/guest-letter-entry` 工作区基于该提交，未改动旧 PR。 |
+| PR 创建 | 实现提交 `b97f9bd9fe7c956777e37954ce53f4fba9dd04be` | PASS：开发仓库 PR #19 已创建，open、mergeable；最终 head 与 CI 以 PR 实时状态为准。 |
 | 静态检查 | 本轮差异；Windows／Flutter 3.47.5／Dart 3.13.4 | PASS：`flutter analyze --no-pub` 输出 `No issues found!`。 |
 | 信件聚焦测试 | 同上；`test/student_letter_test.dart` | PASS：10 项，覆盖未登录首次展示、登录不展示、恢复期不展示、滚动门槛、安装级回执、新安装重展示、保存失败重试及 5 组明暗／语言／尺寸。 |
 | 关联回归 | 同上；登录、身份、导航、私信运行时及主题集成 | PASS：42 项通过。 |
 | 渲染检查 | 本轮差异；`apps/mobile/build/student-letter-render/` | PASS：5 组场景共 10 张首末截图；实际查看中文明暗主题及 2 倍字暗色末尾，蓝色强调、App 字体、按钮与滚动闸门正常。 |
 | 协作检查 | 本轮暂存差异 | PASS：`git diff --cached --check` 无问题，`python tools/check-collaboration.py --staged` 通过。 |
-| PR 产品 CI | 本轮 PR head；GitHub Actions | NOT_RUN：PR 创建后记录当前 head 结果。 |
+| PR 产品 CI | PR #19；GitHub Actions | RUNNING：创建后首次汇总中多数检查 queued，`actual-process-acceptance` skipped；最终结论以 PR 当前 head 为准。 |
 | 原生设备／生产 | 本轮宿主验证 | NOT_RUN：宿主存储替身与组件截图不证明原生存储、真机或生产验收。 |
 
 ## 历史说明
@@ -64,4 +65,4 @@ SpeechFUL项目组
 
 ## 下一步
 
-提交并推送本轮差异，创建新 PR，随后只查询一次当前 head 的 CI 汇总并回填任务记录。合并与发布等待明确授权。
+等待 PR #19 的当前 head CI 完成并接受审查。合并与发布等待明确授权。
