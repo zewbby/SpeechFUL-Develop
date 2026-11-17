@@ -54,4 +54,4 @@
 
 - 首轮 head `10f3869` 的 Auth feedback、Android candidate、iOS compile 等通过；跨模块 CI 暴露新增 0051 后，历史迁移测试仍将 0050 当作最新，以及冻结 C39 夹具缺少新的强制认证表。
 - 仅调整相关回归：最新链路预期为 0051；回滚目标明确为 0049，允许先撤销可逆的 0051，再验证 0050 仍拒绝破坏历史事实。旧 C39 无新认证 schema 必须启动拒绝；只补认证 0051 并记真实 ledger／最小权限后可启动，仍不依赖可选读取加速表。产品认证和界面代码未变化。
-- PASS：私有一次性 PostgreSQL 中通知／头像新建与升级、私信新建与升级、首页七种升级起点、认证权限及独立于可选读取加速的启动；`ci-fix-notice-avatar.log`、`ci-fix-dm.log`、`ci-fix-feed.log`、`ci-fix-runtime.log`。更新后远端 CI 待验，不将首轮有失败的整组 CI 记为 PASS。
+- PASS：私有一次性 PostgreSQL 中通知／头像新建与升级、私信新建与升级、首页七种升级起点、认证权限及独立于可选读取加速的启动；`ci-fix-notice-avatar.log`、`ci-fix-dm.log`、`ci-fix-feed.log`、`ci-fix-runtime.log`。更新后远端 CI 待验，不将首轮有失败的整组 CI 记为 PASS。- 完整 Gate 回归另发现新增表尚未进入精确隐私清单。已审计并加入 C 的用户名带密钥摘要／失败计时、V 的限时挑战／证明摘要；原禁止字段与跨方 schema 限制保持。实际通过密码失败、挑战和解题路径填充三表后，检查 C 无校邮／V 安装信息、V 无账号／身份／密码／C 安装信息；`ci-fix-privacy.log` PASS。最小权限审计对 C 失败表仅允许 SELECT／INSERT／UPDATE，对 V 滑块两表仅允许 SELECT／INSERT／DELETE，不对新增表套用通用 CRUD 放行。

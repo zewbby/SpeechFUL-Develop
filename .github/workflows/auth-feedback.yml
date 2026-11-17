@@ -97,7 +97,7 @@ jobs:
       - name: Original signup results, late commit fence and email recovery in private PostgreSQL
         working-directory: services/api
         env:
-          AUTHLAB_EMAIL_TEST_PATTERN: '^Test(SignupResult|EmailResetPasswordAndPausedCredentials|EmailLogin|PasswordLogin)'
+          AUTHLAB_EMAIL_TEST_PATTERN: '^Test(SignupResult|EmailResetPasswordAndPausedCredentials|EmailLogin|PasswordLogin|PrivacySchemaPartyBoundary|PrivacySeededPartyRows)'
           AUTHLAB_EMAIL_HTTP_TEST_PATTERN: '^Test(HTTPSPostgresEligibilityAndSignup|CaptchaHTTPSPostgres)$'
           AUTHLAB_EMAIL_RUNTIME_TEST_PATTERN: '^TestPasswordLogin.*Postgres$'
         run: sh authlab/run-email-login-isolated.sh
