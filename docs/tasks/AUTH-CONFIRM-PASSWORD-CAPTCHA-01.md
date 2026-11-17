@@ -3,8 +3,9 @@
 - 模式：常规；当前 Session 维护。按 `grill-with-docs` 仅委派只读事实调查，无并行实现。
 - 分支／Worktree：`codex/feat/auth-confirm-password-captcha`；`D:/SpeechFUL/.worktrees/auth-confirm-password-captcha`。
 - 实际基线：已安装 1.2.0 源码 `f6df995a10f169d1610de1f3fdb90bc0247242b9`，保留其已有功能。初始 `origin/main` 为 `22071c8d06aa5c4e564139c59672a3767609a92e`，因缺少已安装界面更新而未用于最终构建。
-- 最终产品提交：`ea34c05a12c1e816ab72f9a6d536f08b96c6ea9a`（前序本地实现 `d58252f`、`d0503dd`）。无 Push／PR／合并／正式部署。
+- 设备被测产品提交：`ea34c05a12c1e816ab72f9a6d536f08b96c6ea9a`（前序本地实现 `d58252f`、`d0503dd`）。原本机交付时未 Push／PR／合并／部署；用户后续明确授权本次改动 Push、提 PR 并合并，正式部署／发布仍不在授权范围。
 - 授权：用户要求开发后制作并覆盖安装手机本机测试包，不发布、不增加版本号；明确选择临时测试服务＋合成账号、线上保持原状。仅保留本任务创建且仍供手机测试使用的服务、测试库、证书和 USB 端口映射。
+- PR 基线：最新 `origin/main` = `75154f7d8f221d55fdfe2e2e885c4b656ea863f3`；四个本任务提交已 rebase 到该主线，认证运行源码与已装机被测版本相同，其他差异仅为主线新增研究文档与规则。对齐后的产品提交 `8dcd502aea5ff7da1fe77f63f7e640da898ec2ed`，原设备证据仍绑定 `ea34c05`。
 - 更新日期：2026-11-17。
 - 状态：实现 已完成；自动化／真实 SQL 验证 PASS；同版本安装 PASS；手机最终冻结／到期恢复／首页 PASS；合并 未合并；发布 未发布。
 
@@ -22,7 +23,7 @@
 - V PostgreSQL 保存答案与凭证摘要；120 秒挑战一次作答、60 秒证明一次消费，绑定用途、V 安装标识、原请求键及校邮。数据库时钟裁决过期，`DELETE RETURNING` 原子消费。
 - C `0051_password_login_limits.sql` 保存用户名的带密钥摘要、失败数与固定冻结截止。原请求结果表记失败幂等结果，同键重放不重复计数；新键纠正密码。SQL 行锁串行化最终成功／失败，密码计算保持在锁外，事务内再次检查冻结与最终 Safety Gate、密码版本及账号状态。未知用户名与已有用户名同形处理。
 - V `0010_auth_captcha.sql` 与 C 0051 独立迁移和 runtime 最小权限；启动拒绝缺表／缺权限，不静默放行。C/V 原有隔离、校邮准入、会话代次、资源归属及最终业务 Gate 均保留。
-- OpenAPI 两侧契约、词汇表与 auth-feedback 产品 CI 已更新。此次仅本地测试，远端 CI 为 NOT_RUN。
+- OpenAPI 两侧契约、词汇表与 auth-feedback 产品 CI 已更新。用户已授权 PR 合并；远端产品 CI 待运行，发布仍未进行。
 
 ## 验证与证据
 
@@ -36,7 +37,7 @@
 | Go | WSL2 Go 1.22.2；相关 authcaptcha／authprivacy／HTTP／runtime `go test`、`go vet`、`go build ./...` | PASS：`policy-go.log` 与 `verify-policy-backend.sh`；新 CAPTCHA race PASS `captcha-final.log`。首次全 HTTP race 曾暴露既有 DM 假时钟与异步 TLS 关闭竞态，未修改无关业务，不声称全包 race 通过 |
 | 真实 SQL：密码冻结 | runner 明确归属的一次性私有 socket C/V 库，`-race`；`TestPasswordLogin*`、原 SessionLogin、SignupResult、EmailLogin、EmailResetPasswordAndPausedCredentials | PASS：`policy-sql.log` 中 authprivacy 包通过；第五次冻结、未知用户同形、成功／到期清零、同键不重复计数、8 路并发、暂停的正确密码证明不能跨冻结、邮箱登录不受影响。旧夹具重复幂等键和超长测试用户名已修正 |
 | 真实 HTTPS／SQL／权限 | `TestCaptchaHTTPSPostgres`、`TestHTTPSPostgresEligibilityAndSignup`、`TestPasswordLoginRuntimePrivilegesPostgres` | PASS：`policy-sql-http-runtime.log`；三发码拒绝跳过／重放、跨用途、并发唯一消费、DB 过期；原注册登录；C 缺表及 SELECT／INSERT／UPDATE 任一缺失启动拒绝。该日志首个空匹配包不计验收 |
-| API 契约与协作 | 完整 `packages/openapi/check-specs.py`，`tools/check-collaboration.py --staged`、`git diff --check` | PASS：13 份契约、协作检查及空白检查；适用产品 CI 已补充，远端 NOT_RUN（用户不授权推送） |
+| API 契约与协作 | 完整 `packages/openapi/check-specs.py`，`tools/check-collaboration.py --staged`、`git diff --check` | PASS：13 份契约、协作检查及空白检查；适用产品 CI 已补充，远端待验（已获 Push／PR／合并授权） |
 | 同版本安装 | vivo V2323A，包 `org.hnuhole.hnuhole_mobile.publictrial`；profile AOT，本机开发 CA 通过正常 TLS 校验 | PASS：`device-install-policy.log`、`android-receipt.json`。1.2.0／2026111701；签名 SHA256 `1538fb309499d651d7d12d7711a646c4a80fde4b1397857a9e39ce672b3dc9ae`；安装 APK 与交付 APK SHA256 相同 `25c04dd4841c58c92cb565888e38135f6ed716bd0435d11bb243abfea39f5334`，72,867,288 字节 |
 | 源码对应 | Android 打包副本与最终运行源码对比，LFS 素材按摘要核实 | PASS：245 个运行文件一致，`source-comparison.json`；仅 publictrial 包名／原测试签名／构建内存配置存在打包差异，`local-source-proof.json` |
 | 手机交互 | 前期确认密码与三发码完整链路；最终包错误／第五次冻结／重启／邮箱旁路 | PASS：`register-mismatch-verified.*`（无注册请求）、`registration-success-confirmed.*`、`recovery-reset-result.*`；最终 `actual-freeze-attempt-2` 至 `-5`、`freeze-correct-password-rejected.*`、`frozen-email-login-success.*`。自然到期后正确密码登录／首页 PASS：`verified-natural-expiry-success.*`、`final-verified-home.*`、`device-validation.json`；首冻 06:15:58Z，06:26:00Z 自然恢复（602 秒后实测，期间未改钟／改冻结数据），数据库固定 300 秒截止由 SQL 回归验证；失败计数 0、locked_until NULL，`device-counter-final.json` |
