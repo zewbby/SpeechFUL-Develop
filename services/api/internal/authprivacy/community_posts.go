@@ -21,6 +21,7 @@ type PostConfig struct {
 	KeyKey, FingerprintKey, CursorKey     [32]byte
 	PreparedFeedReads, PreparedMediaReads bool
 	LegacyListReads                       bool
+	SearchDocuments                       bool
 }
 type postServices struct {
 	commands                   *posts.CommandCodec
@@ -29,6 +30,7 @@ type postServices struct {
 	editEnabled                bool
 	tagsEnabled                bool
 	typedSearchEnabled         bool
+	searchDocuments            bool
 	hiddenPostsEnabled         bool
 	preparedFeedReads          bool
 	preparedMediaReads         bool
@@ -75,9 +77,15 @@ func (c *Community) WithPosts(ctx context.Context, config PostConfig) (*Communit
 			return nil, err
 		}
 	}
+	if config.SearchDocuments {
+		if err = c.checkPostSearchDocumentSchema(ctx); err != nil {
+			return nil, err
+		}
+	}
 	clone := *c
 	clone.posts = &postServices{commands: commands, cursors: cursors,
-		preparedFeedReads: config.PreparedFeedReads, preparedMediaReads: config.PreparedMediaReads}
+		preparedFeedReads: config.PreparedFeedReads, preparedMediaReads: config.PreparedMediaReads,
+		searchDocuments: config.SearchDocuments}
 	if err = c.pool.QueryRow(ctx, `SELECT to_regclass('c_posts.hidden_posts') IS NOT NULL`).Scan(&clone.posts.hiddenPostsEnabled); err != nil {
 		return nil, err
 	}

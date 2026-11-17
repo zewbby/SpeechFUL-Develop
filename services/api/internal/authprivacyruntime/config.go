@@ -44,6 +44,7 @@ type PostsConfig struct {
 	PreparedFeedReads  bool   `json:"preparedFeedReads,omitempty"`
 	LegacyListReads    bool   `json:"legacyListReads,omitempty"`
 	PreparedMediaReads bool   `json:"preparedMediaReads,omitempty"`
+	SearchDocuments    bool   `json:"searchDocuments,omitempty"`
 }
 
 type CommentsConfig struct {
