@@ -97,6 +97,7 @@ jobs:
         env:
           AUTHLAB_EMAIL_TEST_PATTERN: '^Test(SignupResult|EmailResetPasswordAndPausedCredentials|EmailLogin)'
           AUTHLAB_EMAIL_HTTP_TEST_PATTERN: '^Test(HTTPSPostgresEligibilityAndSignup|CaptchaHTTPSPostgres)$'
+          AUTHLAB_EMAIL_RUNTIME_TEST_PATTERN: '^TestCaptchaRuntimePrivilegesPostgres$'
         run: sh authlab/run-email-login-isolated.sh
       - uses: subosito/flutter-action@v2
         with:

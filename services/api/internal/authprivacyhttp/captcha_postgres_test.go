@@ -122,6 +122,26 @@ func TestCaptchaHTTPSPostgres(t *testing.T) {
 			if successes.Load() != 1 {
 				t.Fatal("proof had multiple consumers")
 			}
+			// Database time is authoritative even if an answering process clock drifts.
+			for _, kind := range []string{"challenge", "proof"} {
+				expired := httpTestEncoding(32, 82)
+				raw, _ := protocol.DecodeCanonicalBase64url(expired, 32)
+				digest := sha256.Sum256(raw)
+				query := "INSERT INTO " + schema + ".captcha_proofs VALUES($1,$2,clock_timestamp()-interval '1 second')"
+				if kind == "challenge" {
+					query = "INSERT INTO " + schema + ".captcha_challenges VALUES($1,$2,100,clock_timestamp()-interval '1 second')"
+				}
+				if _, err := pool.Exec(context.Background(), query, digest[:], binding[:]); err != nil {
+					t.Fatal(err)
+				}
+				if kind == "challenge" {
+					if _, err := store.Solve(context.Background(), expired, 100); !errors.Is(err, authcaptcha.ErrInvalid) {
+						t.Fatal("expired challenge accepted", err)
+					}
+				} else if err := store.Verify(context.Background(), expired, binding); !errors.Is(err, authcaptcha.ErrInvalid) {
+					t.Fatal("expired proof accepted", err)
+				}
+			}
 			// A token header is allowed only for documented protected POST preflights.
 			r := httptest.NewRequest("OPTIONS", actions[0], strings.NewReader(""))
 			r.Header.Set("Origin", "https://app.example")

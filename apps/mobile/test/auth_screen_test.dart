@@ -427,6 +427,17 @@ void main() {
       final confirmation = find.byKey(
         const ValueKey('registration-password-confirmation'),
       );
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(
+                of: confirmation,
+                matching: find.byType(TextField),
+              ),
+            )
+            .autofillHints,
+        contains(AutofillHints.newPassword),
+      );
       final next = find.byKey(const ValueKey('registration-next'));
       await tester.ensureVisible(next);
       await tester.tap(next);
@@ -461,9 +472,17 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final h = _Harness();
       await h.mount(tester, dark: dark, scale: scale);
-      final fallback = base64Decode(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS1sAAAAASUVORK5CYII=',
-      );
+      final fallback = (await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        ui.Canvas(recorder)
+            .drawColor(const Color(0xFF0088CC), ui.BlendMode.src);
+        final picture = recorder.endRecording();
+        final image = await picture.toImage(320, 160);
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        image.dispose();
+        picture.dispose();
+        return bytes!.buffer.asUint8List();
+      }))!;
       CaptchaChallenge puzzle = CaptchaChallenge(
         id: 'fixture',
         background: fallback,
@@ -500,6 +519,10 @@ void main() {
       final source = tester.element(
         find.byKey(const ValueKey('login-password')),
       );
+      await tester.runAsync(() async {
+        await precacheImage(MemoryImage(puzzle.background), source);
+        await precacheImage(MemoryImage(puzzle.piece), source);
+      });
       final expectedColors = Theme.of(source).colorScheme;
       String? result;
       unawaited(

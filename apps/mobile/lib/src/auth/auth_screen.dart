@@ -1694,7 +1694,11 @@ class _AuthScreenState extends State<AuthScreen> {
           : TextInputType.text,
       textInputAction: TextInputAction.next,
       autofillHints: password
-          ? [newPassword ? AutofillHints.newPassword : AutofillHints.password]
+          ? [
+              newPassword || confirmPassword
+                  ? AutofillHints.newPassword
+                  : AutofillHints.password,
+            ]
           : username
           ? [newUsername ? AutofillHints.newUsername : AutofillHints.username]
           : email

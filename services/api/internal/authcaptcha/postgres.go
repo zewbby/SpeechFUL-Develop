@@ -27,14 +27,15 @@ func (s *SQLStore) Issue(ctx context.Context, id [32]byte, r Record) error {
 			return err
 		}
 	}
-	_, err := s.pool.Exec(ctx, "INSERT INTO "+s.schema+".captcha_challenges(id,binding,answer_x,expires_at) VALUES($1,$2,$3,$4)", id[:], r.Binding[:], r.X, r.Expires)
+	_, err := s.pool.Exec(ctx, "INSERT INTO "+s.schema+".captcha_challenges(id,binding,answer_x,expires_at) VALUES($1,$2,$3,clock_timestamp()+interval '120 seconds')", id[:], r.Binding[:], r.X)
 	return err
 }
 func (s *SQLStore) Take(ctx context.Context, id [32]byte) (Record, error) {
 	var r Record
 	var binding []byte
-	err := s.pool.QueryRow(ctx, "DELETE FROM "+s.schema+".captcha_challenges WHERE id=$1 RETURNING binding,answer_x,expires_at", id[:]).Scan(&binding, &r.X, &r.Expires)
-	if errors.Is(err, pgx.ErrNoRows) {
+	var valid bool
+	err := s.pool.QueryRow(ctx, "DELETE FROM "+s.schema+".captcha_challenges WHERE id=$1 RETURNING binding,answer_x,expires_at,expires_at>clock_timestamp()", id[:]).Scan(&binding, &r.X, &r.Expires, &valid)
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && !valid {
 		err = ErrInvalid
 	}
 	copy(r.Binding[:], binding)
