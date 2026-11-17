@@ -2,6 +2,16 @@ import 'app_language.dart';
 
 // Application-owned authentication text; interpolated values are never translated.
 const authTranslations = <String, UiTranslation>{
+  '账号或密码错误，请重试': (
+    '帳號或密碼錯誤，請重試',
+    'Incorrect account or password. Please try again.',
+    'アカウント名またはパスワードが正しくありません。再試行してください。',
+  ),
+  '尝试次数过多，请5分钟后重试': (
+    '嘗試次數過多，請5分鐘後重試',
+    'Too many attempts. Please try again in 5 minutes.',
+    '試行回数が多すぎます。5分後に再試行してください。',
+  ),
   '确认密码': ('確認密碼', 'Confirm password', 'パスワードの確認'),
   '再次输入密码': ('再次輸入密碼', 'Enter password again', 'パスワードを再入力'),
   '两次输入的密码不一致': ('兩次輸入的密碼不一致', 'Passwords do not match', 'パスワードが一致しません'),

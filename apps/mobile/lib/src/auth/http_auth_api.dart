@@ -1528,9 +1528,9 @@ class HttpAuthApi
     required Set<int> expected,
   }) async {
     final protected =
+        verifier &&
         method == 'POST' &&
         const {
-          '/api/v1/auth/sessions',
           '/api/v1/eligibility/otp-requests',
           '/api/v1/email-login/otp-requests',
           '/api/v1/email-reset/otp-requests',
@@ -1752,6 +1752,7 @@ class HttpAuthApi
     'EMAIL_UNREGISTERED',
     'EMAIL_PROOF_INVALID',
     'AUTHENTICATION_FAILED',
+    'PASSWORD_LOGIN_LOCKED',
     'IDEMPOTENCY_KEY_REUSED',
     'IDEMPOTENCY_CONFLICT',
     'OTP_INVALID',

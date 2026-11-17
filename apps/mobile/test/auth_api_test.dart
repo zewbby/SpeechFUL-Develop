@@ -153,9 +153,9 @@ void main() {
     await verifier.close();
   });
 
-  for (final action in ['password', 'register', 'email', 'reset']) {
+  for (final action in ['register', 'email', 'reset']) {
     test('captcha precedes $action on its own privacy boundary', () async {
-      final endpoint = action == 'password' ? community : verifier;
+      final endpoint = verifier;
       endpoint.respond = (request) async {
         if (request.uri.path == '/api/v1/captcha/challenges') {
           await _json(request, 200, {
@@ -172,8 +172,6 @@ void main() {
           });
         } else if (request.uri.path == '/api/v1/captcha/solutions') {
           await _json(request, 200, {'token': _token});
-        } else if (action == 'password') {
-          await _json(request, 201, _session(), session: true);
         } else {
           await _json(request, 202, {'flowId': _flow, 'retryAfterSeconds': 60});
         }
@@ -183,13 +181,6 @@ void main() {
         return exchange.solve(puzzle.id, 123);
       };
       switch (action) {
-        case 'password':
-          await api.login(
-            username: 'private_user',
-            password: 'IndependentPassword123',
-            installationId: _cInstallation,
-            idempotencyKey: _key,
-          );
         case 'register':
           await api.requestOtp(
             email: 'owned@hainanu.edu.cn',
@@ -214,35 +205,40 @@ void main() {
       final challenge = jsonDecode(endpoint.requests.first.body) as Map;
       expect(challenge['action'], endpoint.requests.last.path);
       expect(challenge['requestKey'], _key);
-      expect(
-        challenge['installationId'],
-        action == 'password' ? _cInstallation : _vInstallation,
-      );
-      expect((action == 'password' ? verifier : community).requests, isEmpty);
+      expect(challenge['installationId'], _vInstallation);
+      expect(community.requests, isEmpty);
     });
   }
+  test('cancelled captcha opens no email request', () async {
+    api.captchaPresenter = (_) async => null;
+    await expectLater(
+      api.requestOtp(
+        email: 'owned@hainanu.edu.cn',
+        installationId: _vInstallation,
+        idempotencyKey: _key,
+      ),
+      throwsA(isA<CaptchaNotSubmitted>()),
+    );
+    expect(community.requests, isEmpty);
+    expect(verifier.requests, isEmpty);
+  });
+
   test(
-    'cancelled captcha opens no protected request or email request',
+    'password login never presents captcha or requests a captcha token',
     () async {
-      api.captchaPresenter = (_) async => null;
-      await expectLater(
-        api.login(
-          username: 'private_user',
-          password: 'IndependentPassword123',
-          installationId: _cInstallation,
-          idempotencyKey: _key,
-        ),
-        throwsA(isA<CaptchaNotSubmitted>()),
+      community.respond = (request) =>
+          _json(request, 201, _session(), session: true);
+      api.captchaPresenter = (_) async =>
+          throw StateError('Password login must not open captcha');
+      await api.login(
+        username: 'private_user',
+        password: 'IndependentPassword123',
+        installationId: _cInstallation,
+        idempotencyKey: _key,
       );
-      await expectLater(
-        api.requestOtp(
-          email: 'owned@hainanu.edu.cn',
-          installationId: _vInstallation,
-          idempotencyKey: _key,
-        ),
-        throwsA(isA<CaptchaNotSubmitted>()),
-      );
-      expect(community.requests, isEmpty);
+      expect(community.requests, hasLength(1));
+      expect(community.requests.single.path, '/api/v1/auth/sessions');
+      expect(community.requests.single.headers['captcha-token'], isNull);
       expect(verifier.requests, isEmpty);
     },
   );

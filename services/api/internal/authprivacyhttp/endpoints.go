@@ -84,7 +84,6 @@ type ChannelBackend interface {
 }
 
 type CommunityOptions struct {
-	Captcha *authcaptcha.Service
 	// PublicOrigin is the configured C HTTPS origin, never a request Host header.
 	// Empty keeps link generation/resolution disabled for older embedders.
 	PublicOrigin     string
@@ -153,7 +152,6 @@ func NewCommunityEndpoints(options CommunityOptions) (*Endpoints, error) {
 		return nil, err
 	}
 	b.shared = options.Shared
-	b.captcha = options.Captcha
 	if options.PublicOrigin != "" {
 		origin, err := fixedOrigin(options.PublicOrigin)
 		if err != nil {
@@ -375,7 +373,7 @@ func (b *boundary) wrap(internal bool, next http.HandlerFunc) http.Handler {
 			return
 		}
 		if !internal {
-			if captchaPath(r.URL.Path) {
+			if b.service == VerifierService && captchaPath(r.URL.Path) {
 				b.captchaPublic(w, r)
 				return
 			}
@@ -488,7 +486,7 @@ func publicMethodAllowed(service Service, path, method string) bool {
 }
 
 func publicMethod(service Service, path string) string {
-	if captchaPath(path) {
+	if service == VerifierService && captchaPath(path) {
 		return http.MethodPost
 	}
 	if service == VerifierService {

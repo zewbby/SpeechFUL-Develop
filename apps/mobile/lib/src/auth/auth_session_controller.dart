@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 
 import '../navigation/channel_directory_controller.dart';
 import 'auth_api.dart';
-import 'captcha.dart';
 import 'auth_crypto.dart';
 import 'auth_models.dart';
 import 'auth_store.dart';
@@ -343,16 +342,12 @@ class AuthSessionController extends ChangeNotifier {
       _error = '安全存储写入失败，不能确认本机登录。';
     } on AuthFailure catch (e) {
       _status = _emptyStatus(_store.current ?? const AuthState());
-      _error = e is CaptchaNotSubmitted
-          ? e.cancelled
-                ? null
-                : '安全验证暂时不可用，请重试。'
-          : e.code == 'CAPTCHA_REQUIRED' || e.code == 'CAPTCHA_INVALID'
-          ? '请重新完成安全验证。'
+      _error = e.code == 'PASSWORD_LOGIN_LOCKED'
+          ? '尝试次数过多，请5分钟后重试'
           : e.code == 'ACCOUNT_BANNED'
           ? '账号已被封禁'
           : e.unauthorized || e.code == 'CLIENT_INPUT_INVALID'
-          ? '用户名或密码不正确。'
+          ? '账号或密码错误，请重试'
           : e.code == 'SESSION_CREATED_RETRY_LOGIN'
           ? '上次登录已建立会话，请主动重新登录。'
           : '登录结果暂时无法确认，请主动重试。';

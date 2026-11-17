@@ -17,7 +17,7 @@ import (
 )
 
 func TestCaptchaHTTPSPostgres(t *testing.T) {
-	for _, party := range []string{"c", "v"} {
+	for _, party := range []string{"v"} {
 		t.Run(party, func(t *testing.T) {
 			pool := e2ePool(t, party)
 			schema := party + "_auth"

@@ -14,7 +14,7 @@ import (
 
 func captchaAction(service Service, path string) bool {
 	if service == CommunityService {
-		return path == "/api/v1/auth/sessions"
+		return false
 	}
 	return path == "/api/v1/eligibility/otp-requests" || path == "/api/v1/email-login/otp-requests" || path == "/api/v1/email-reset/otp-requests"
 }

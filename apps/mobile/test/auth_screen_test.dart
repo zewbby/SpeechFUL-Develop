@@ -627,7 +627,7 @@ void main() {
       'wrong password here',
     );
     await _tap(tester, '登录并进入');
-    expect(find.text('用户名或密码不正确。'), findsOneWidget);
+    expect(find.text('账号或密码错误，请重试'), findsOneWidget);
     expect(find.text('账号已被封禁'), findsNothing);
     expect(find.text('申诉'), findsNothing);
     expect(appeals, 0);
@@ -1297,6 +1297,37 @@ void main() {
     await h.finish(tester);
   });
 
+  testWidgets('password freeze uses a dismissible themed error dialog', (
+    tester,
+  ) async {
+    final h = _Harness();
+    h.api.loginFailure = const AuthFailure(
+      kind: AuthFailureKind.rejected,
+      statusCode: 429,
+      code: 'PASSWORD_LOGIN_LOCKED',
+      retryAfterSeconds: 300,
+    );
+    await h.mount(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('login-username')),
+      'private_name',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('login-password')),
+      'incorrect password',
+    );
+    await tester.tap(find.byKey(const ValueKey('login-submit')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('尝试次数过多，请5分钟后重试'), findsOneWidget);
+    expect(find.byKey(const ValueKey('captcha-dialog')), findsNothing);
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(h.api.logins, 1);
+    await h.finish(tester);
+  });
+
   testWidgets('password errors use a dismissible dialog and retain inputs', (
     tester,
   ) async {
@@ -1354,12 +1385,12 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('取消'), findsNothing);
-      expect(find.text('用户名或密码不正确。'), findsOneWidget);
+      expect(find.text('账号或密码错误，请重试'), findsOneWidget);
       await _snapshot(tester, 'auth-password-error-dialog');
       await tester.tap(find.text('确定'));
       await tester.pumpAndSettle();
       expect(find.byType(AlertDialog), findsNothing);
-      expect(find.text('用户名或密码不正确。'), findsNothing);
+      expect(find.text('账号或密码错误，请重试'), findsNothing);
       expect(
         tester
             .widget<TextFormField>(find.byKey(const ValueKey('login-username')))
