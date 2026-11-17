@@ -54,33 +54,95 @@ tags:
   - name: InternalRetirement
     description: 经环境绑定 mTLS 认证的 C 到 V 未开户退役收据投递与持久确认。
 paths:
+  /api/v1/captcha/challenges:
+    post:
+      operationId: createCaptchaChallenge
+      summary: Generate a slide puzzle
+      description: Self-hosted slide captcha. One answer attempt per challenge; challenge expires after
+        120 seconds. Proof expires after 60 seconds and is consumed once before the protected operation.
+        Bound to this service, action, installation, original key and username/email; no cross-C/V identifiers.
+        Never logs payloads. Existing idempotency and final Safety Gates remain mandatory.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptchaChallengeRequest'
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            X-Request-ID:
+              $ref: '#/components/headers/VRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaptchaChallenge'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/CaptchaInvalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/CaptchaUnavailable'
+  /api/v1/captcha/solutions:
+    post:
+      operationId: solveCaptchaChallenge
+      summary: Verify one slide answer
+      description: Self-hosted slide captcha. One answer attempt per challenge; challenge expires after
+        120 seconds. Proof expires after 60 seconds and is consumed once before the protected operation.
+        Bound to this service, action, installation, original key and username/email; no cross-C/V identifiers.
+        Never logs payloads. Existing idempotency and final Safety Gates remain mandatory.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptchaSolution'
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            X-Request-ID:
+              $ref: '#/components/headers/VRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaptchaProof'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/CaptchaInvalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/CaptchaUnavailable'
   /api/v1/eligibility/otp-requests:
     post:
       operationId: requestEligibilityOtp
-      tags: [Eligibility]
+      tags:
+      - Eligibility
       summary: 申请校园邮箱验证码
-      description: |
-        此接口无社区账号认证。格式合格的空闲和已占用精确邮箱均使用同形 202
-        响应与通用提示，允许投递时均实际发码，不暴露邮箱配额或账号是否存在。
-        email 不裁空格、不折叠大小写、不删别名，域名仅接受严格 hainanu.edu.cn。
-
-        新发送只在原有六十秒间隔、设备锁定、精确邮箱跨流程预算与独立网络预算
-        均允许时推进。客户端提交时立即开始倒计时；切后台或重开不能重置。
-        设备对该邮箱连续三次错误后锁五分钟，锁定不能因重试延长，期间不能发码。
-        重新发送不清除精确邮箱级风控预算；具体滚动阈值为上线前校准门槛。
-
-        V 在邮件外部副作用之前持久登记原操作，并用幂等邮件投递／可核对状态机
-        防止崩溃重发。同操作重 POST 必须用相同幂等键、email 与 V 安装 ID，
-        只核对或推进原操作，不另发码、不变 flowId、不重置倒计时。
-        原键绑定内容采用与库分离的服务器 HMAC，不保存 OTP 的快速裸散列。
-        同键不同材料返回 IDEMPOTENCY_KEY_REUSED；原结果不可核对时不得换新键。
-        仅持久确认原发送不可再发生或服务商明确未发出时才标 NOT_SENT，并撤销
-        本次新增的等待，原有等待仍保留。邮件延迟或 SMTP 超时不构成此证明。
+      description: "此接口无社区账号认证。格式合格的空闲和已占用精确邮箱均使用同形 202\n响应与通用提示，允许投递时均实际发码，不暴露邮箱配额或账号是否存在。\nemail 不裁空格、不折叠大小写、不删别名，域名仅接受严格\
+        \ hainanu.edu.cn。\n\n新发送只在原有六十秒间隔、设备锁定、精确邮箱跨流程预算与独立网络预算\n均允许时推进。客户端提交时立即开始倒计时；切后台或重开不能重置。\n设备对该邮箱连续三次错误后锁五分钟，锁定不能因重试延长，期间不能发码。\n\
+        重新发送不清除精确邮箱级风控预算；具体滚动阈值为上线前校准门槛。\n\nV 在邮件外部副作用之前持久登记原操作，并用幂等邮件投递／可核对状态机\n防止崩溃重发。同操作重 POST 必须用相同幂等键、email\
+        \ 与 V 安装 ID，\n只核对或推进原操作，不另发码、不变 flowId、不重置倒计时。\n原键绑定内容采用与库分离的服务器 HMAC，不保存 OTP 的快速裸散列。\n同键不同材料返回\
+        \ IDEMPOTENCY_KEY_REUSED；原结果不可核对时不得换新键。\n仅持久确认原发送不可再发生或服务商明确未发出时才标 NOT_SENT，并撤销\n本次新增的等待，原有等待仍保留。邮件延迟或\
+        \ SMTP 超时不构成此证明。\n Each new mail request requires a single-use Captcha-Token; 428/422/503 CAPTCHA\
+        \ errors occur before mail admission."
       security: []
       x-max-request-body-bytes: 1024
       parameters:
-        - $ref: '#/components/parameters/VInstallationId'
-        - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/CaptchaToken'
+      - $ref: '#/components/parameters/VInstallationId'
+      - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -111,6 +173,8 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        '428':
+          $ref: '#/components/responses/CaptchaRequired'
   /api/v1/eligibility/otp-request-result:
     get:
       operationId: getEligibilityOtpRequestResult
@@ -479,10 +543,13 @@ paths:
       tags:
       - Eligibility
       summary: 申请已有账号登录专用校园邮箱验证码
-      description: 仅登录用途。沿用精确校邮、持久幂等发信、60秒冷却和跨用途共享风控预算；不占用或释放资格，不透露是否注册。同键重POST只推进原申请，不重复投递。结果未知时保留原键。
+      description: 仅登录用途。沿用精确校邮、持久幂等发信、60秒冷却和跨用途共享风控预算；不占用或释放资格，不透露是否注册。同键重POST只推进原申请，不重复投递。结果未知时保留原键。 Each
+        new mail request requires a single-use Captcha-Token; 428/422/503 CAPTCHA errors occur before mail
+        admission.
       security: []
       x-max-request-body-bytes: 1024
       parameters:
+      - $ref: '#/components/parameters/CaptchaToken'
       - $ref: '#/components/parameters/VInstallationId'
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -515,6 +582,8 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        '428':
+          $ref: '#/components/responses/CaptchaRequired'
   /api/v1/email-login/otp-confirmations:
     post:
       operationId: confirmEmailLoginOtp
@@ -584,10 +653,15 @@ paths:
       tags:
       - Eligibility
       summary: Campus email password reset OTP
-      description: RESET purpose only. Shares address/device cooldowns and budgets with LOGIN and REGISTER. Proof is EMAIL-RESET/V1, bound to C installation and original reset key using EMAIL-RESET-BINDING/V1. Valid for 120 seconds; never grants a session or registration. Unknown sends and confirmations retry the original key.
+      description: RESET purpose only. Shares address/device cooldowns and budgets with LOGIN and REGISTER.
+        Proof is EMAIL-RESET/V1, bound to C installation and original reset key using EMAIL-RESET-BINDING/V1.
+        Valid for 120 seconds; never grants a session or registration. Unknown sends and confirmations retry
+        the original key. Each new mail request requires a single-use Captcha-Token; 428/422/503 CAPTCHA
+        errors occur before mail admission.
       security: []
       x-max-request-body-bytes: 1024
       parameters:
+      - $ref: '#/components/parameters/CaptchaToken'
       - $ref: '#/components/parameters/VInstallationId'
       - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -620,6 +694,8 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        '428':
+          $ref: '#/components/responses/CaptchaRequired'
   /api/v1/email-reset/otp-confirmations:
     post:
       operationId: confirmEmailResetOtp
@@ -698,6 +774,17 @@ components:
         Authorization: OtpConfirmationResult <原确认32字节随机幂等键的43字符base64url>。
         仅核对原安装 ID／flowId 的原确认及待办，不能以本头取得完整资格。
   parameters:
+    CaptchaToken:
+      name: Captcha-Token
+      in: header
+      required: true
+      description: 'Single-use 60-second security proof from this service. Missing proof: 428 CAPTCHA_REQUIRED;
+        wrong/expired/replayed/binding mismatch: 422 CAPTCHA_INVALID.'
+      schema:
+        type: string
+        minLength: 43
+        maxLength: 43
+        pattern: ^[A-Za-z0-9_-]{43}$
     VInstallationId:
       name: V-Installation-ID
       in: header
@@ -739,6 +826,116 @@ components:
         type: string
         pattern: '^[1-9][0-9]{0,5}$'
   schemas:
+    CaptchaChallengeRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - action
+      - installationId
+      - requestKey
+      - subject
+      properties:
+        action:
+          type: string
+          enum:
+          - /api/v1/eligibility/otp-requests
+          - /api/v1/email-login/otp-requests
+          - /api/v1/email-reset/otp-requests
+        installationId:
+          type: string
+          minLength: 22
+          maxLength: 22
+        requestKey:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]{43}$
+        subject:
+          type: string
+          minLength: 1
+          maxLength: 254
+    CaptchaChallenge:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - background
+      - piece
+      - width
+      - height
+      - pieceWidth
+      - pieceHeight
+      - startX
+      - y
+      - expiresAt
+      properties:
+        id:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]{43}$
+        background:
+          type: string
+          maxLength: 400000
+          description: JPEG base64 data URI; never includes the answer.
+        piece:
+          type: string
+          maxLength: 400000
+          description: PNG base64 data URI.
+        width:
+          type: integer
+          enum:
+          - 320
+        height:
+          type: integer
+          enum:
+          - 160
+        pieceWidth:
+          type: integer
+          minimum: 20
+          maximum: 80
+        pieceHeight:
+          type: integer
+          minimum: 20
+          maximum: 80
+        startX:
+          type: integer
+          minimum: 0
+          maximum: 299
+        y:
+          type: integer
+          minimum: 0
+          maximum: 140
+        expiresAt:
+          type: string
+          format: date-time
+    CaptchaSolution:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - x
+      properties:
+        id:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]{43}$
+        x:
+          type: number
+          minimum: 0
+          maximum: 320
+    CaptchaProof:
+      type: object
+      additionalProperties: false
+      required:
+      - token
+      properties:
+        token:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]{43}$
     EmailLoginProof:
       type: string
       minLength: 303
@@ -1022,6 +1219,9 @@ components:
                 - RETIREMENT_RECONCILIATION_REQUIRED
                 - RATE_LIMITED
                 - RESULT_EXPIRED
+                - CAPTCHA_REQUIRED
+                - CAPTCHA_INVALID
+                - CAPTCHA_UNAVAILABLE
                 - SERVICE_UNAVAILABLE
             message:
               type: string
@@ -1039,6 +1239,40 @@ components:
         requestId:
           $ref: '#/components/schemas/Random16'
   responses:
+    CaptchaRequired:
+      description: CAPTCHA_REQUIRED; protected operation was not admitted.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        X-Request-ID:
+          $ref: '#/components/headers/VRequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    CaptchaInvalid:
+      description: CAPTCHA_INVALID; wrong, expired, replayed or mismatched proof. Protected operation was
+        not admitted.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        X-Request-ID:
+          $ref: '#/components/headers/VRequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    CaptchaUnavailable:
+      description: CAPTCHA_UNAVAILABLE; validation unavailable. Protected operation was not admitted.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        X-Request-ID:
+          $ref: '#/components/headers/VRequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
     BadRequest:
       description: REQUEST_INVALID；请求结构、编码、重复键、未知字段或请求体过大。
       headers:

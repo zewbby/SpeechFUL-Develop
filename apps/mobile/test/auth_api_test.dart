@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:hnuhole_mobile/src/auth/captcha.dart';
+
 import 'loopback_tls_fixture.dart';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -150,6 +152,100 @@ void main() {
     await community.close();
     await verifier.close();
   });
+
+  for (final action in ['password', 'register', 'email', 'reset']) {
+    test('captcha precedes $action on its own privacy boundary', () async {
+      final endpoint = action == 'password' ? community : verifier;
+      endpoint.respond = (request) async {
+        if (request.uri.path == '/api/v1/captcha/challenges') {
+          await _json(request, 200, {
+            'id': _flow,
+            'background': 'AQ==',
+            'piece': 'Ag==',
+            'width': 320,
+            'height': 160,
+            'pieceWidth': 48,
+            'pieceHeight': 48,
+            'startX': 10,
+            'y': 40,
+            'expiresAt': '2030-01-01T00:00:00Z',
+          });
+        } else if (request.uri.path == '/api/v1/captcha/solutions') {
+          await _json(request, 200, {'token': _token});
+        } else if (action == 'password') {
+          await _json(request, 201, _session(), session: true);
+        } else {
+          await _json(request, 202, {'flowId': _flow, 'retryAfterSeconds': 60});
+        }
+      };
+      api.captchaPresenter = (exchange) async {
+        final puzzle = await exchange.load();
+        return exchange.solve(puzzle.id, 123);
+      };
+      switch (action) {
+        case 'password':
+          await api.login(
+            username: 'private_user',
+            password: 'IndependentPassword123',
+            installationId: _cInstallation,
+            idempotencyKey: _key,
+          );
+        case 'register':
+          await api.requestOtp(
+            email: 'owned@hainanu.edu.cn',
+            installationId: _vInstallation,
+            idempotencyKey: _key,
+          );
+        case 'email':
+          await api.requestEmailLoginOtp(
+            email: 'owned@hainanu.edu.cn',
+            installationId: _vInstallation,
+            idempotencyKey: _key,
+          );
+        case 'reset':
+          await api.requestEmailResetOtp(
+            email: 'owned@hainanu.edu.cn',
+            installationId: _vInstallation,
+            idempotencyKey: _key,
+          );
+      }
+      expect(endpoint.requests, hasLength(3));
+      expect(endpoint.requests.last.headers['captcha-token'], _token);
+      final challenge = jsonDecode(endpoint.requests.first.body) as Map;
+      expect(challenge['action'], endpoint.requests.last.path);
+      expect(challenge['requestKey'], _key);
+      expect(
+        challenge['installationId'],
+        action == 'password' ? _cInstallation : _vInstallation,
+      );
+      expect((action == 'password' ? verifier : community).requests, isEmpty);
+    });
+  }
+  test(
+    'cancelled captcha opens no protected request or email request',
+    () async {
+      api.captchaPresenter = (_) async => null;
+      await expectLater(
+        api.login(
+          username: 'private_user',
+          password: 'IndependentPassword123',
+          installationId: _cInstallation,
+          idempotencyKey: _key,
+        ),
+        throwsA(isA<CaptchaNotSubmitted>()),
+      );
+      await expectLater(
+        api.requestOtp(
+          email: 'owned@hainanu.edu.cn',
+          installationId: _vInstallation,
+          idempotencyKey: _key,
+        ),
+        throwsA(isA<CaptchaNotSubmitted>()),
+      );
+      expect(community.requests, isEmpty);
+      expect(verifier.requests, isEmpty);
+    },
+  );
 
   for (final entry in {
     'COMMITTED': RegistrationResult.committed,

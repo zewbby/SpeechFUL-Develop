@@ -32,6 +32,76 @@ x-required-deployment-controls:
 - trusted-utc-and-monotonic-key-revocation-disaster-reconciliation
 - all-sensitive-responses-no-store-and-no-secret-logging
 paths:
+  /api/v1/captcha/challenges:
+    post:
+      operationId: createCaptchaChallenge
+      summary: Generate a slide puzzle
+      description: Self-hosted slide captcha. One answer attempt per challenge; challenge expires after
+        120 seconds. Proof expires after 60 seconds and is consumed once before the protected operation.
+        Bound to this service, action, installation, original key and username/email; no cross-C/V identifiers.
+        Never logs payloads. Existing idempotency and final Safety Gates remain mandatory.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptchaChallengeRequest'
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaptchaChallenge'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/CaptchaInvalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/CaptchaUnavailable'
+  /api/v1/captcha/solutions:
+    post:
+      operationId: solveCaptchaChallenge
+      summary: Verify one slide answer
+      description: Self-hosted slide captcha. One answer attempt per challenge; challenge expires after
+        120 seconds. Proof expires after 60 seconds and is consumed once before the protected operation.
+        Bound to this service, action, installation, original key and username/email; no cross-C/V identifiers.
+        Never logs payloads. Existing idempotency and final Safety Gates remain mandatory.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptchaSolution'
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaptchaProof'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/CaptchaInvalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/CaptchaUnavailable'
   "/api/v1/auth/registration-intents":
     post:
       operationId: createRegistrationIntent
@@ -134,6 +204,7 @@ paths:
       - Session
       security: []
       parameters:
+      - $ref: "#/components/parameters/CaptchaToken"
       - "$ref": "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
@@ -143,6 +214,10 @@ paths:
             schema:
               "$ref": "#/components/schemas/SessionCreateRequest"
       responses:
+        "422":
+          $ref: "#/components/responses/CaptchaInvalid"
+        "428":
+          $ref: "#/components/responses/CaptchaRequired"
         '201':
           description: 新会话已提交，旧移动会话立即失效。
           headers:
@@ -1177,6 +1252,17 @@ components:
       name: Authorization
       description: 严格ClosureStatus <32字节status_secret>；只看同closureId状态和已签收据。
   parameters:
+    CaptchaToken:
+      name: Captcha-Token
+      in: header
+      required: true
+      description: 'Single-use 60-second security proof from this service. Missing proof: 428 CAPTCHA_REQUIRED;
+        wrong/expired/replayed/binding mismatch: 422 CAPTCHA_INVALID.'
+      schema:
+        type: string
+        minLength: 43
+        maxLength: 43
+        pattern: ^[A-Za-z0-9_-]{43}$
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1250,6 +1336,102 @@ components:
       schema:
         "$ref": "#/components/schemas/DateTime"
   schemas:
+    CaptchaChallengeRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - action
+      - installationId
+      - requestKey
+      - subject
+      properties:
+        action:
+          type: string
+          enum:
+          - /api/v1/auth/sessions
+        installationId:
+          type: string
+          minLength: 22
+          maxLength: 22
+        requestKey: &id001
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]{43}$
+        subject:
+          type: string
+          minLength: 1
+          maxLength: 254
+    CaptchaChallenge:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - background
+      - piece
+      - width
+      - height
+      - pieceWidth
+      - pieceHeight
+      - startX
+      - y
+      - expiresAt
+      properties:
+        id: *id001
+        background:
+          type: string
+          maxLength: 400000
+          description: JPEG base64 data URI; never includes the answer.
+        piece:
+          type: string
+          maxLength: 400000
+          description: PNG base64 data URI.
+        width:
+          type: integer
+          enum:
+          - 320
+        height:
+          type: integer
+          enum:
+          - 160
+        pieceWidth:
+          type: integer
+          minimum: 20
+          maximum: 80
+        pieceHeight:
+          type: integer
+          minimum: 20
+          maximum: 80
+        startX:
+          type: integer
+          minimum: 0
+          maximum: 299
+        y:
+          type: integer
+          minimum: 0
+          maximum: 140
+        expiresAt:
+          type: string
+          format: date-time
+    CaptchaSolution:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - x
+      properties:
+        id: *id001
+        x:
+          type: number
+          minimum: 0
+          maximum: 320
+    CaptchaProof:
+      type: object
+      additionalProperties: false
+      required:
+      - token
+      properties:
+        token: *id001
     EmailLoginProof:
       type: string
       minLength: 303
@@ -2169,6 +2351,9 @@ components:
               - PAYLOAD_TOO_LARGE
               - UNSUPPORTED_MEDIA_TYPE
               - RATE_LIMITED
+              - CAPTCHA_REQUIRED
+              - CAPTCHA_INVALID
+              - CAPTCHA_UNAVAILABLE
               - SERVICE_UNAVAILABLE
             message:
               type: string
@@ -2193,6 +2378,40 @@ components:
       - error
       - requestId
   responses:
+    CaptchaRequired:
+      description: CAPTCHA_REQUIRED; protected operation was not admitted.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    CaptchaInvalid:
+      description: CAPTCHA_INVALID; wrong, expired, replayed or mismatched proof. Protected operation was
+        not admitted.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    CaptchaUnavailable:
+      description: CAPTCHA_UNAVAILABLE; validation unavailable. Protected operation was not admitted.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
     BadRequest:
       description: 400 MALFORMED_REQUEST：重复/未知JSON字段、错误类型、null、非规范编码、非法认证组合/请求体。
       headers:

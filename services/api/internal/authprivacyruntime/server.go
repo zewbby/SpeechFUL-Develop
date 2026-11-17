@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/authcaptcha"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/authprivacy"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/authprivacy/protocol"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/authprivacyhttp"
@@ -61,6 +62,13 @@ func CheckDatabase(ctx context.Context, pool *pgxpool.Pool, service authprivacyh
 		return errors.Join(errDatabaseSchema, err)
 	}
 	// Sequence permissions matter for Gate audit identity and V budget events.
+	var captchaReady bool
+	if err = pool.QueryRow(ctx, `SELECT to_regclass($1||'.captcha_challenges') IS NOT NULL AND to_regclass($1||'.captcha_proofs') IS NOT NULL`, schema).Scan(&captchaReady); err != nil || !captchaReady {
+		return errors.Join(errDatabaseSchema, err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT bool_and(has_table_privilege(current_user,format('%I.%I',$1::text,t.name),'SELECT') AND has_table_privilege(current_user,format('%I.%I',$1::text,t.name),'INSERT') AND has_table_privilege(current_user,format('%I.%I',$1::text,t.name),'DELETE')) FROM unnest(ARRAY['captcha_challenges','captcha_proofs']) AS t(name)`, schema).Scan(&captchaReady); err != nil || !captchaReady {
+		return errors.Join(errDatabasePrivileges, err)
+	}
 	var denied bool
 	if err = pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relkind='S' AND NOT has_sequence_privilege(current_user,c.oid,'USAGE'))`, schema).Scan(&denied); err != nil || denied {
 		return errors.Join(errDatabasePrivileges, err)
@@ -489,7 +497,7 @@ func Run(ctx context.Context, c Config, service authprivacyhttp.Service) error {
 			origins = append(append([]string{}, origins...), c.PublicOrigin)
 		}
 		community = community.WithRecoveryPaused()
-		endpoints, err = authprivacyhttp.NewCommunityEndpoints(authprivacyhttp.CommunityOptions{PublicOrigin: c.PublicOrigin, Shared: shared, Backend: community, Passwords: passwords, InternalPeer: identity, AllowedOrigins: origins, Limits: limits, AdminDirectory: adminDirectory})
+		endpoints, err = authprivacyhttp.NewCommunityEndpoints(authprivacyhttp.CommunityOptions{Captcha: authcaptcha.NewSQL(pool, "c_auth"), PublicOrigin: c.PublicOrigin, Shared: shared, Backend: community, Passwords: passwords, InternalPeer: identity, AllowedOrigins: origins, Limits: limits, AdminDirectory: adminDirectory})
 		if err != nil {
 			return err
 		}
@@ -530,7 +538,7 @@ func Run(ctx context.Context, c Config, service authprivacyhttp.Service) error {
 		if err != nil {
 			return err
 		}
-		endpoints, err = authprivacyhttp.NewVerifierEndpoints(authprivacyhttp.VerifierOptions{Shared: shared, Eligibility: eligibility, Receipts: store, InternalPeer: identity, AllowedOrigins: c.AllowedOrigins, Limits: limits})
+		endpoints, err = authprivacyhttp.NewVerifierEndpoints(authprivacyhttp.VerifierOptions{Captcha: authcaptcha.NewSQL(pool, "v_auth"), Shared: shared, Eligibility: eligibility, Receipts: store, InternalPeer: identity, AllowedOrigins: c.AllowedOrigins, Limits: limits})
 		if err != nil {
 			return err
 		}
