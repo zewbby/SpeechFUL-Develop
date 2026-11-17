@@ -126,7 +126,6 @@ paths:
     post:
       operationId: createSession
       summary: 用户名密码主动登录并接替旧设备
-      x-password-failure-policy: 不弹滑块；同一用户名连续第5次密码错误后冻结密码登录300秒，冻结内即使密码正确也拒绝；跨设备／服务实例共享，重试不延长。成功密码登录或冻结到期清零；邮箱登录与找回密码不受影响。未知用户名同形处理。同键失败重放不重复计数。
       x-banned-login: 凭据验证及最终 C Gate 检查通过后，仍在封禁期的账号返回403 ACCOUNT_BANNED，不签发普通会话；客户端显示账号已被封禁及申诉/取消。错误密码仍为同形401 AUTHENTICATION_FAILED，其他账号不可用原因仍为ACCOUNT_UNAVAILABLE。申诉需通过独立MODERATION_SELF认证，不提升社区权限。
       description: 不存在用户名、错误密码走同形AUTHENTICATION_FAILED及受控等价计算路径；速率限制不能明显枚举账号。初步验证密码须记录所用密码验证值/凭据版本，最终账号锁内再次确认两者未变，变化就拒绝旧证明并要求全新密码校验，不能把恢复前的旧密码授权套到新版本。在账号锁内现场取UTC时间，拒绝CLOSED、到期FINALIZING及仍有效封禁；早于dueAt的主动成功登录原子取消PENDING_CLOSE并新建唯一移动会话，递增会话代次、撤销旧会话。初始有效期为实际裁决时间+30天，同设备重新登录也接替旧会话；不联系V。首次201含32字节随机token；已提交同键仅409
         SESSION_CREATED_RETRY_LOGIN，不重发token，客户端新键重新输入/确认密码登录替代不可见会话。后台刷新或恢复查询不是主动登录。原完整结果已清理时，命中本operation的请求墓碑只回410
@@ -2138,7 +2137,6 @@ components:
               enum:
               - MALFORMED_REQUEST
               - AUTHENTICATION_FAILED
-              - PASSWORD_LOGIN_LOCKED
               - EMAIL_UNREGISTERED
               - EMAIL_PROOF_INVALID
               - SESSION_INVALID
@@ -2296,7 +2294,7 @@ components:
           schema:
             "$ref": "#/components/schemas/ErrorBody"
     RateLimited:
-      description: 429 RATE_LIMITED；密码登录连续第5次错误及冻结内请求为PASSWORD_LOGIN_LOCKED，Retry-After为冻结剩余秒数（1至300）。冻结期间不重复计数、不延长时间。其他限流沿用RATE_LIMITED；未知用户名与已存在用户名同形。
+      description: 429 RATE_LIMITED：有界Retry-After；不能凭凭据是否存在让响应或时间暴露账号/邮箱配额。
       headers:
         Cache-Control:
           "$ref": "#/components/headers/NoStore"
