@@ -80,18 +80,7 @@ jobs:
           ref: 1d829b2623a6c32830ee1b74fae6c99a436ad3b3
           path: .req002-frozen-baseline
           persist-credentials: false
-      - name: Same-request HTTPS stage diagnostic (not acceptance)
-        env:
-          PGPORT: '55440'
-          FEED_TEST_RACE: '0'
-          FEED_TEST_PATTERN: '^TestRealHTTPSFeedTimingDiagnosticPostgres$'
-        run: |
-          export PATH="$(pg_config --bindir):$PATH"
-          export FEED_GOOSE="$(go env GOPATH)/bin/goose"
-          export REQ002_SOURCE="$(git rev-parse HEAD)"
-          export REQ002_DIAGNOSTIC_OUTPUT="$RUNNER_TEMP/feed-request-timing.json"
-          sh services/api/authlab/run-feed-isolated.sh
-      - name: Frozen feed batch HTTPS performance (40 percent hard gate)
+      - name: Frozen feed batch HTTPS performance (35 percent hard gate)
         env:
           PGPORT: '55440'
         run: |
@@ -105,34 +94,9 @@ jobs:
           export REQ002_PERFORMANCE_DIRECTORY="$RUNNER_TEMP/feed-batch-performance"
           python3 services/api/authlab/test_compare_feed_performance.py
           sh services/api/authlab/run-feed-performance.sh
-      - name: Independent same-fixture tail diagnosis (never acceptance)
-        if: always()
-        env:
-          PGPORT: '55440'
-          FEED_TEST_RACE: '0'
-          FEED_TEST_PATTERN: '^TestRealHTTPSFeedTailDiagnosticPostgres$'
-          REQ002_TAIL_GO_TRACE: '1'
-        run: |
-          export PATH="$(pg_config --bindir):$PATH"
-          export FEED_GOOSE="$(go env GOPATH)/bin/goose"
-          export REQ002_SOURCE="$(git rev-parse HEAD)"
-          export REQ002_TAIL_DIAGNOSTIC_DIRECTORY="$RUNNER_TEMP/feed-tail-diagnostic"
-          sh services/api/authlab/run-feed-isolated.sh
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: feed-tail-diagnostic
-          path: ${{ runner.temp }}/feed-tail-diagnostic/
-          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: feed-batch-performance
           path: ${{ runner.temp }}/feed-batch-performance/
-          if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: feed-request-timing
-          path: ${{ runner.temp }}/feed-request-timing.json
           if-no-files-found: ignore

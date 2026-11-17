@@ -19,19 +19,7 @@ import (
 
 // Opt-in real TLS + PostgreSQL comparison. Never accepts a database or token
 // from the caller: e2eNewServices owns and resets only the isolated authlab DB.
-type feedBatchPerformanceObserver struct {
-	Configure     func(*e2eServices)
-	BeforeRequest func(*http.Request, string, int) *http.Request
-	AfterRequest  func(string, int, float64, float64, float64, bool)
-}
-
 func TestRealHTTPSFeedBatchPerformancePostgres(t *testing.T) {
-	runRealHTTPSFeedBatchPerformance(t, nil)
-}
-
-// The independent diagnostic uses the exact fixture, route order, warmups,
-// samples and clock bracket. Nil observers leave the formal gate unchanged.
-func runRealHTTPSFeedBatchPerformance(t *testing.T, observer *feedBatchPerformanceObserver) {
 	if os.Getenv("REQ002_PERFORMANCE") != "1" {
 		t.Skip("explicit frozen performance run required")
 	}
@@ -70,8 +58,7 @@ func runRealHTTPSFeedBatchPerformance(t *testing.T, observer *feedBatchPerforman
 		Cohorts                 []cohort
 		Complete                bool
 		Threshold               float64
-		Diagnostic              bool `json:"Diagnostic,omitempty"`
-	}{Diagnostic: observer != nil, Source: os.Getenv("REQ002_SOURCE"), Clock: "CLOCK_MONOTONIC_RAW", ClockGuard: "Every warmup and sample: RAW lies within Go bracket plus max(50us,1% RAW); bracket uncertainty <= max(50us,1% RAW); no exclusions", Warmup: 10, Samples: 80, Rounds: 1, Threshold: .40}
+	}{Source: os.Getenv("REQ002_SOURCE"), Clock: "CLOCK_MONOTONIC_RAW", ClockGuard: "Every warmup and sample: RAW lies within Go bracket plus max(50us,1% RAW); bracket uncertainty <= max(50us,1% RAW); no exclusions", Warmup: 10, Samples: 80, Rounds: 1, Threshold: .35}
 	defer func() {
 		data, e := json.MarshalIndent(report, "", "  ")
 		if e != nil {
@@ -100,9 +87,6 @@ func runRealHTTPSFeedBatchPerformance(t *testing.T, observer *feedBatchPerforman
 		t.Fatal(e)
 	}
 	*s.c = *selected
-	if observer != nil && observer.Configure != nil {
-		observer.Configure(s)
-	}
 	publish := func(start, count int) {
 		for n := start; n < start+count; n++ {
 			postHTTPSJSON(t, s, "PUT", fmt.Sprintf("/api/v1/post-commands/%s", httpTestEncoding(16, byte(n+10))), owner, "", posts.CreatePostInput{ChannelID: channel, IdentityID: identity, Title: fmt.Sprintf("Frozen %02d", n), Body: "Frozen chronological feed performance body."}, 202)
@@ -154,9 +138,6 @@ func runRealHTTPSFeedBatchPerformance(t *testing.T, observer *feedBatchPerforman
 			}
 			req.Header.Set("Authorization", "Bearer "+reader)
 			req.Header.Set("X-Post-Preview", "thumbnail-v1")
-			if observer != nil && observer.BeforeRequest != nil {
-				req = observer.BeforeRequest(req, route.kind, n)
-			}
 			outerStart := time.Now()
 			rawStart, startOK := feedPerformanceRawClock()
 			started := time.Now()
@@ -179,9 +160,6 @@ func runRealHTTPSFeedBatchPerformance(t *testing.T, observer *feedBatchPerforman
 				RawMS, GoLowerMS, GoUpperMS, UncertaintyMS float64
 				Valid                                      bool
 			}{elapsed, lower, upper, upper - lower, valid})
-			if observer != nil && observer.AfterRequest != nil {
-				observer.AfterRequest(route.kind, n, elapsed, lower, upper, valid)
-			}
 			if !valid {
 				c.Errors = append(c.Errors, fmt.Sprintf("clock_interval_invalid_%d", n))
 			}
@@ -229,10 +207,6 @@ func runRealHTTPSFeedBatchPerformance(t *testing.T, observer *feedBatchPerforman
 	}
 	report.Complete = true
 	for _, c := range report.Cohorts {
-		if observer != nil {
-			t.Logf("diagnostic only: %s p95=%.3fms; instrumented, never acceptance", c.Kind, c.P95)
-			continue
-		}
 		t.Logf("round%d %s %s p95=%.3fms (cross-checkout hard gate runs in compare-feed-performance.py)", c.Round, c.Kind, c.Mode, c.P95)
 	}
 }

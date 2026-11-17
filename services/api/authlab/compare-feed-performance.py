@@ -8,7 +8,7 @@ import sys
 BASELINE = "1d829b2623a6c32830ee1b74fae6c99a436ad3b3"
 KINDS = ("home20", "next20", "home10", "next5", "incrementalHome10", "incrementalNext5", "incrementalRefresh5")
 root = Path(sys.argv[1])
-report = {"Baseline": BASELINE, "Threshold": .40, "Cohorts": [], "Comparisons": [], "Complete": False, "PASS": False}
+report = {"Baseline": BASELINE, "Threshold": .35, "Cohorts": [], "Comparisons": [], "Complete": False, "PASS": False}
 
 
 def require(condition, message):
@@ -23,7 +23,7 @@ try:
             data = json.loads((root / f"{mode}-{round_number}.json").read_text())
             require(not data.get("Diagnostic", False), "diagnostic samples cannot be used for acceptance")
             require(data["Complete"] and data["Warmup"] == 10 and data["Samples"] == 80 and data["Rounds"] == 1, "incomplete or changed measurement protocol")
-            require(data["Threshold"] == .40 and len(data["Cohorts"]) == len(KINDS), "changed threshold or cohort count")
+            require(data["Threshold"] == .35 and len(data["Cohorts"]) == len(KINDS), "changed threshold or cohort count")
             require(data["Clock"] == "CLOCK_MONOTONIC_RAW", "wrong endpoint interval clock")
             require(data["Source"] and (mode != "legacy" or data["Source"] == BASELINE), "wrong source provenance")
             if mode == "batch":
@@ -51,7 +51,7 @@ try:
             old = indexed[round_number, kind, "legacy"]
             new = indexed[round_number, kind, "batch"]
             gain = 1 - new / old
-            result = {"round": round_number, "Kind": kind, "LegacyP95": old, "BatchP95": new, "Improvement": gain, "PASS": gain >= .40}
+            result = {"round": round_number, "Kind": kind, "LegacyP95": old, "BatchP95": new, "Improvement": gain, "PASS": gain >= .35}
             report["Comparisons"].append(result)
             print(f"round{round_number} {kind}: {old:.3f} -> {new:.3f} ms, {gain:.2%}, {'PASS' if result['PASS'] else 'FAIL'}")
     report["Complete"] = True

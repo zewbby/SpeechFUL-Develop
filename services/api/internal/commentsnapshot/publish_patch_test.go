@@ -520,7 +520,6 @@ func TestRealRedisPublishPatchUnknownOutcomeProbe(t *testing.T) {
 
 func TestRealRedisPublishPatchAOFReplay(t *testing.T) {
 	s, _ := realStore(t, 2)
-	observeOwnedRedisFailure(t, s)
 	ctx := context.Background()
 	for _, setting := range [][2]string{{"appendfsync", "always"}, {"appendonly", "yes"}} {
 		if err := s.client.ConfigSet(ctx, setting[0], setting[1]).Err(); err != nil {

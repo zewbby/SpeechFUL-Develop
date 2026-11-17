@@ -14,7 +14,7 @@ class PerformanceGateTests(unittest.TestCase):
                 for mode in ("legacy", "batch"):
                     value = 10.0 if mode == "legacy" else 5.0
                     data = {"Source": "1d829b2623a6c32830ee1b74fae6c99a436ad3b3" if mode == "legacy" else "candidate",
-                            "Complete": True, "Warmup": 10, "Samples": 80, "Rounds": 1, "Threshold": .40, "Clock": "CLOCK_MONOTONIC_RAW",
+                            "Complete": True, "Warmup": 10, "Samples": 80, "Rounds": 1, "Threshold": .35, "Clock": "CLOCK_MONOTONIC_RAW",
                             "Cohorts": [{"round": round_number, "Mode": mode, "Kind": kind, "Samples": [value]*80, "P95": value, "Errors": [],
                                          "Clocks": [{"RawMS": value, "GoLowerMS": value, "GoUpperMS": value, "UncertaintyMS": 0, "Valid": True} for _ in range(90)]}
                                         for kind in ("home20", "next20", "home10", "next5", "incrementalHome10", "incrementalNext5", "incrementalRefresh5")]}
@@ -36,6 +36,16 @@ class PerformanceGateTests(unittest.TestCase):
             for clock in data["Cohorts"][-1]["Clocks"]:
                 clock.update(RawMS=7.0, GoLowerMS=7.0, GoUpperMS=7.0)
         self.check_gate(fail_one, False)
+
+    def test_policy_boundary(self):
+        def value_at(value):
+            def mutate(data):
+                data["Cohorts"][-1].update(Samples=[value]*80, P95=value)
+                for clock in data["Cohorts"][-1]["Clocks"]:
+                    clock.update(RawMS=value, GoLowerMS=value, GoUpperMS=value)
+            return mutate
+        self.check_gate(value_at(6.5), True)
+        self.check_gate(value_at(6.51), False)
 
     def test_rejects_incomplete_or_invalid_samples(self):
         self.check_gate(lambda data: data.update(Complete=False), False)
