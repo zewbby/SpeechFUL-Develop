@@ -306,3 +306,9 @@
 - 处理：按用户要求回退 v24 全部性能优化——`_AlbumThumb` 恢复 StatelessWidget + build 内 Future；相册头部恢复整段随展开重建；`_AvatarCropEditor._decode` 恢复初始 setState。`personal_profile.dart` 的 `RepaintBoundary` 已于 v26 移除。
 - 菜单约束改为不访问控制器：宽度取屏幕宽减左右 16 内边距，最大高度按 `屏幕高 * .62 - 160` 保守计算并限制 112–376，避免半屏上翻且不再触发控制器断言。
 - 验证：`dart format` PASS；`flutter analyze --no-pub <identity_avatar_flow.dart> <personal_profile.dart>` 无 error/warning，仅 1 条存量 deprecated info。widget 测试 NOT_RUN（沿用用户此前要求）；合并、发布 NOT_RUN。待完整重建复验。
+
+## v28 PR 提交（2026-11-18）
+
+- 用户回报已完成真机测试（本记录不替代具体设备、步骤与结果证据）。
+- 本地提交 `1ccff70`，已变基到当前 `origin/main` `b86b4fb`；`flutter analyze --no-pub apps/mobile` 0 error / 0 warning，4 条存量 info。
+- 本次授权范围：推送 `feat/profile-settings-entry` 并创建面向 `main` 的 PR；不包含合并或发布。
