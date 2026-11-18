@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:hnuhole_image_viewer/image_viewer.dart';
 
 import '../auth/auth_presentation.dart';
+import '../auth/auth_session_controller.dart';
 import '../design_system/telegram_theme.dart';
 import '../design_system/motion.dart';
 import '../design_system/motion_routes.dart';
@@ -24,6 +25,8 @@ class SettingsScreen extends StatefulWidget {
     this.supportGalleryWriter,
     this.accountId,
     this.username,
+    this.sessions,
+    this.sessionAuthority,
   });
   final VoidCallback onManageIdentity, onManageSecurity;
   final VoidCallback? onClose,
@@ -34,20 +37,94 @@ class SettingsScreen extends StatefulWidget {
       onChangePassword;
   final ViewerGalleryWriter? supportGalleryWriter;
   final String? accountId, username;
+  final AuthSessionController? sessions;
+  final int? sessionAuthority;
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _opening = false;
+  bool _retiring = false;
+  ModalRoute<dynamic>? _settingsRoute;
+  final _ownedPages = <Route<dynamic>>{};
+
+  bool get _hasAuthority {
+    final sessions = widget.sessions;
+    return sessions == null ||
+        (sessions.isAuthenticated &&
+            sessions.authorityVersion == widget.sessionAuthority);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.sessions?.addListener(_retireIfStale);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _settingsRoute = ModalRoute.of(context);
+    _retireIfStale();
+  }
+
+  @override
+  void dispose() {
+    widget.sessions?.removeListener(_retireIfStale);
+    super.dispose();
+  }
+
+  void _retireIfStale() {
+    if (_hasAuthority || _retiring) return;
+    _retiring = true;
+    final settings = _settingsRoute;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final route in _ownedPages.toList().reversed) {
+        if (route.isActive) route.navigator?.removeRoute(route);
+      }
+      if (settings != null && settings.isActive && !settings.isFirst) {
+        settings.navigator?.removeRoute(settings);
+      }
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  Widget _guard(Widget child) {
+    final sessions = widget.sessions;
+    if (sessions == null) return child;
+    final authority = widget.sessionAuthority;
+    return ListenableBuilder(
+      listenable: sessions,
+      builder: (context, _) =>
+          sessions.isAuthenticated && sessions.authorityVersion == authority
+          ? child
+          : const SizedBox.shrink(),
+    );
+  }
+
+  Future<T?> _push<T>(Route<T> route) async {
+    _ownedPages.add(route);
+    try {
+      return await Navigator.of(context).push(route);
+    } finally {
+      _ownedPages.remove(route);
+    }
+  }
+
   // 子页统一走 HhSlidePageRoute（微信式：从右缘纯位移滑入、覆盖当前页、
   // 无渐变/缩放），与「修改密码/身份管理/黑名单」等 main.dart 推入的
   // 页面完全一致。
-  void _open(Widget page) =>
-      Navigator.of(context)
-          .push<void>(HhSlidePageRoute<void>(builder: (_) => page));
+  void _open(Widget page) {
+    final guarded = _guard(page);
+    unawaited(_push(HhSlidePageRoute<void>(builder: (_) => guarded)));
+  }
+
   void _select(_SettingEntry entry) {
-    if (!mounted || _opening || ModalRoute.isCurrentOf(context) == false) {
+    if (!mounted ||
+        !_hasAuthority ||
+        _opening ||
+        ModalRoute.isCurrentOf(context) == false) {
       return;
     }
     _opening = true;
@@ -57,27 +134,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _confirmLogout() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        key: const ValueKey('settings-logout-confirmation'),
-        title: Text(hhText(dialogContext, '退出登录')),
-        content: Text(hhText(dialogContext, '确定退出登录吗？')),
-        actions: [
-          TextButton(
-            key: const ValueKey('settings-logout-cancel'),
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(hhText(dialogContext, '取消')),
+    if (!_hasAuthority) return;
+    final confirmed = await _push(
+      DialogRoute<bool>(
+        context: context,
+        builder: (dialogContext) => _guard(
+          AlertDialog(
+            key: const ValueKey('settings-logout-confirmation'),
+            title: Text(hhText(dialogContext, '退出登录')),
+            content: Text(hhText(dialogContext, '确定退出登录吗？')),
+            actions: [
+              TextButton(
+                key: const ValueKey('settings-logout-cancel'),
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(hhText(dialogContext, '取消')),
+              ),
+              FilledButton(
+                key: const ValueKey('settings-logout-confirm'),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(hhText(dialogContext, '确定')),
+              ),
+            ],
           ),
-          FilledButton(
-            key: const ValueKey('settings-logout-confirm'),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(hhText(dialogContext, '确定')),
-          ),
-        ],
+        ),
       ),
     );
-    if (confirmed == true && mounted) widget.onLogout?.call();
+    if (confirmed == true && mounted && _hasAuthority) widget.onLogout?.call();
   }
 
   @override
@@ -296,7 +378,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: page,
       );
     }
-    return page;
+    return _guard(page);
   }
 }
 
@@ -857,6 +939,7 @@ class _AccountProfileState extends State<_AccountProfile> {
   Future<void> _copy(String value) async {
     try {
       await Clipboard.setData(ClipboardData(text: value));
+      if (!mounted) return;
       _copyTimer?.cancel();
       setState(() => _copied = true);
       _copyTimer = Timer(const Duration(milliseconds: 1600), () {

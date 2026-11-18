@@ -990,9 +990,10 @@ class _HnuholeAppState extends State<HnuholeApp>
         .whenComplete(() => _closureRouteOpen = false);
   }
 
-  Widget _settingsScreen(BuildContext context) {
-    if (!widget.sessions.isAuthenticated) return const SizedBox.shrink();
+  Widget _settingsScreen(BuildContext context, int authority) {
     return SettingsScreen(
+      sessions: widget.sessions,
+      sessionAuthority: authority,
       onManageIdentity: _openIdentity,
       onManageSecurity: _openDevices,
       onLogout: () => unawaited(_logoutFromSettings(context)),
@@ -1017,6 +1018,7 @@ class _HnuholeAppState extends State<HnuholeApp>
       _openAuth();
       return;
     }
+    final authority = widget.sessions.authorityVersion;
     _settingsRouteOpen = true;
     // 设置页从左向右滑入并覆盖当前页，返回时向左滑出。
     final popped = navigator.push<void>(
@@ -1025,7 +1027,7 @@ class _HnuholeAppState extends State<HnuholeApp>
         transitionDuration: HhMotion.pageSlide,
         reverseTransitionDuration: HhMotion.pageSlide,
         pageBuilder: (context, animation, secondaryAnimation) =>
-            _settingsScreen(context),
+            _settingsScreen(context, authority),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
             parent: animation,

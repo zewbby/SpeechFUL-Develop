@@ -1142,8 +1142,8 @@ mixin _PersonalProfile on State<PersonalPostsScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(
-                key: _heroKey,
                 child: Padding(
+                  key: _heroKey,
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
                   child: Column(
                     children: [
@@ -1806,24 +1806,35 @@ class _ProfileFlatCard extends StatelessWidget {
                       children: [
                         avatar,
                         const SizedBox(width: 9),
-                        Flexible(
-                          child: Text(
-                            author,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: p.ink,
-                            ),
+                        Expanded(
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 2,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                author,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: p.ink,
+                                ),
+                              ),
+                              Text(
+                                elapsed,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: p.secondary,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(width: 6),
-                        Text(
-                          elapsed,
-                          style: TextStyle(fontSize: 12, color: p.secondary),
-                        ),
-                        const Spacer(),
                         SizedBox(
                           width: 30,
                           height: 30,

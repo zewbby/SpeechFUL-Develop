@@ -186,6 +186,7 @@ class _AlbumSheetState extends State<_AlbumSheet> {
   List<AssetPathEntity>? _albums;
   AssetPathEntity? _album;
   int? _albumCount;
+  int _albumCountRequest = 0;
   Object? _error;
   int _page = 0;
   bool _loadingMore = false;
@@ -242,11 +243,14 @@ class _AlbumSheetState extends State<_AlbumSheet> {
 
   // 头部按钮展示的照片数；缓存避免随弹窗拖动的逐帧重建反复查询。
   Future<void> _refreshAlbumCount() async {
+    final request = ++_albumCountRequest;
     final album = _album;
     if (album == null) return;
     try {
       final count = await album.assetCountAsync;
-      if (mounted) setState(() => _albumCount = count);
+      if (mounted && request == _albumCountRequest) {
+        setState(() => _albumCount = count);
+      }
     } catch (_) {
       // 数量查询失败仅省略显示。
     }
@@ -275,6 +279,7 @@ class _AlbumSheetState extends State<_AlbumSheet> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     final epoch = ++_epoch;
     setState(() {
       _assets = null;

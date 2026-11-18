@@ -6,9 +6,11 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hnuhole_mobile/hnuhole_mobile.dart';
+import 'package:hnuhole_mobile/src/design_system/motion.dart';
 import 'package:hnuhole_mobile/src/localization/app_localizations.dart';
 
 import 'feed_ui_test.dart' as feed;
+import 'identity_test_support.dart';
 import 'login_home_navigation_test.dart' as navigation;
 import 'login_home_test_support.dart';
 
@@ -72,6 +74,56 @@ Future<void> _realFonts() async {
 }
 
 void main() {
+  testWidgets('account data leaves navigation when its session is suspended', (
+    tester,
+  ) async {
+    final fixture = HomeTestFixture();
+    await tester.pumpWidget(await fixture.create());
+    await tester.pumpAndSettle();
+    final id = fixture.store.current!.session!.accountId;
+    await _openSettings(tester);
+    await tester.tap(await _setting(tester, '账号资料'));
+    await tester.pumpAndSettle();
+    final copy = find.byKey(const ValueKey('settings-account-copy'));
+    expect(find.text(id), findsOneWidget);
+    expect(copy.hitTestable(), findsOneWidget);
+
+    fixture.sessions.sessionUnavailable(identityTestToken);
+    await tester.pumpAndSettle();
+    expect(fixture.sessions.isAuthenticated, isFalse);
+    expect(find.byType(SettingsScreen, skipOffstage: false), findsNothing);
+    expect(find.text(id, skipOffstage: false), findsNothing);
+    expect(copy, findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('profile hero only opens settings on a right swipe', (
+    tester,
+  ) async {
+    final fixture = HomeTestFixture();
+    await tester.pumpWidget(await fixture.create());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('destination:personal')));
+    await tester.pumpAndSettle();
+    final replies = find.byKey(const ValueKey('profile-tab-1'));
+    await tester.tap(replies);
+    await tester.pumpAndSettle();
+
+    final hero = find.byKey(const ValueKey('profile-hero-name'));
+    await tester.drag(hero, const Offset(-160, 0));
+    await tester.pumpAndSettle();
+    expect(tester.widget<HhAnimatedSelection>(replies).selected, isTrue);
+    expect(find.byType(SettingsScreen), findsNothing);
+
+    await tester.drag(hero, const Offset(160, 0));
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   testWidgets(
     'four languages fit narrow settings and preserve support purpose',
     (tester) async {

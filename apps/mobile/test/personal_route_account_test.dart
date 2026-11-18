@@ -187,7 +187,13 @@ void main() {
     await tester.pumpAndSettle();
     final old = tester.state(find.byType(PersonalPostsScreen));
     await f.loginB(tester, account: identityTestAccount, name: '同账号的新窗口');
-    expect(find.text('同账号的新窗口'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('personal-profile')),
+        matching: find.text('同账号的新窗口'),
+      ),
+      findsOneWidget,
+    );
     expect(
       identical(tester.state(find.byType(PersonalPostsScreen)), old),
       isFalse,

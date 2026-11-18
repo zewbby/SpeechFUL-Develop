@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hnuhole_mobile/src/design_system/motion.dart';
 import 'package:hnuhole_mobile/src/messaging/direct_message_models.dart';
 import 'package:hnuhole_mobile/src/messaging/direct_message_bubble.dart';
 import 'package:hnuhole_mobile/src/messaging/direct_message_timeline.dart';
@@ -198,10 +199,9 @@ void main() {
         await tester.pumpWidget(app([old]));
         await tester.pumpWidget(app([old, added]));
         expect(enterOffset(tester, 'new'), 8);
-        await tester.pumpAndSettle();
+        await tester.pump(HhMotion.quick);
         expect(enterOffset(tester, 'new'), 0);
-        expect(find.byType(CircularProgressIndicator), findsNothing);
-        expect(find.byIcon(Icons.timelapse_rounded), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
         await tester.enterText(find.byKey(const ValueKey('dm-input')), 'draft');
         await tester.pump();
         final button = tester.widget<IconButton>(
