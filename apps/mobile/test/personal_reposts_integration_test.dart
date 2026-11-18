@@ -242,10 +242,12 @@ void main() {
 
       // v6 起扁平卡片动作行：评论/收藏/点赞 + 转帖移除，均在同一行（y 对齐）。
       final iconFinders = [
-        find.byKey(ValueKey('profile-comment-${feed.postId}')),
-        find.byKey(ValueKey('profile-favorite-${feed.postId}')),
-        find.byKey(ValueKey('profile-like-${feed.postId}')),
-        find.byKey(const ValueKey('repost-undo:$secondIdentity/${feed.postId}')),
+        find.byKey(const ValueKey('profile-comment-${feed.postId}')),
+        find.byKey(const ValueKey('profile-favorite-${feed.postId}')),
+        find.byKey(const ValueKey('profile-like-${feed.postId}')),
+        find.byKey(
+          const ValueKey('repost-undo:$secondIdentity/${feed.postId}'),
+        ),
       ];
       final centers = iconFinders
           .map(

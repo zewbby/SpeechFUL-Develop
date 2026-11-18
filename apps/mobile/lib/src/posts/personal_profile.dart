@@ -2120,7 +2120,12 @@ class RenderSliverTransform extends RenderSliver
     assert(child == this.child);
     final v = _animation.value;
     final fraction = (_phaseOut ? -_direction : _direction) * .22 * v;
-    transform.translate(fraction * constraints.crossAxisExtent, 0.0);
+    transform.translateByDouble(
+      fraction * constraints.crossAxisExtent,
+      0.0,
+      0.0,
+      1.0,
+    );
   }
 
   @override
