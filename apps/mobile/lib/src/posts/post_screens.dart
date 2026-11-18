@@ -17,8 +17,9 @@ import '../design_system/telegram_theme.dart';
 
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../channels/channel.dart';
@@ -1343,6 +1344,9 @@ class PersonalPostsScreen extends StatefulWidget {
     this.onPublishedToChannel,
     this.onChooseChannel,
     this.loadImages,
+    this.onOpenSettings,
+    this.onEditIdentity,
+    this.onSetAvatar,
   });
   final Widget? navigation;
   final bool showNavigation;
@@ -1353,12 +1357,15 @@ class PersonalPostsScreen extends StatefulWidget {
   final ValueChanged<String>? onPublishedToChannel;
   final VoidCallback? onChooseChannel;
   final PostImagesLoader? loadImages;
+  final VoidCallback? onOpenSettings;
+  final VoidCallback? onEditIdentity;
+  final VoidCallback? onSetAvatar;
   @override
   State<PersonalPostsScreen> createState() => _PersonalPostsScreenState();
 }
 
 class _PersonalPostsScreenState extends State<PersonalPostsScreen>
-    with _PersonalProfile {
+    with _PersonalProfile, SingleTickerProviderStateMixin {
   @override
   late final _PostAuthority _authority;
   @override
@@ -1368,6 +1375,7 @@ class _PersonalPostsScreenState extends State<PersonalPostsScreen>
     super.initState();
     _authority = _PostAuthority(widget.controller);
     widget.controller.addListener(_changed);
+    initProfileMotion(this);
     unawaited(widget.controller.loadPersonal());
   }
 
@@ -1382,6 +1390,7 @@ class _PersonalPostsScreenState extends State<PersonalPostsScreen>
   @override
   void dispose() {
     widget.controller.removeListener(_changed);
+    disposeProfileMotion();
     disposeProfile();
     _scroll.dispose();
     super.dispose();

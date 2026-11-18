@@ -24,6 +24,7 @@ class AuthScreen extends StatefulWidget {
     this.onAuthenticated,
     this.onManageSecurity,
     this.onModerationAccess,
+    this.initialRecovery = false,
   });
 
   final AuthSessionController sessions;
@@ -32,6 +33,10 @@ class AuthScreen extends StatefulWidget {
   final VoidCallback? onAuthenticated;
   final VoidCallback? onManageSecurity;
   final VoidCallback? onModerationAccess;
+
+  /// 直接进入「找回账号」分区（登录页的校邮重置密码流程），供设置页
+  /// 修改密码入口复用；可与会话保持登录的状态并存。
+  final bool initialRecovery;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -79,6 +84,7 @@ class _AuthScreenState extends State<AuthScreen> {
     super.initState();
     widget.captchaApi?.captchaPresenter = _presentCaptcha;
     _authenticated = widget.sessions.status == AuthStatus.authenticated;
+    if (widget.initialRecovery) _mode = _AuthMode.recover;
     _lastFlowError = widget.flows.errorMessage;
     _lastFlowStatus = widget.flows.status;
     _lastSessionError = widget.sessions.errorMessage;
@@ -482,6 +488,25 @@ class _AuthScreenState extends State<AuthScreen> {
     }
     if (session == AuthStatus.authenticated) {
       if (_awaitingHome) return _login();
+      // 登录态下主动进入找回分区（设置页修改密码入口复用校邮重置流程）。
+      if (_mode == _AuthMode.recover) {
+        if (flow == AuthFlowStatus.resetCodeConfirmation &&
+            !widget.flows.legacyRecoveryEnabled) {
+          return _emailNewPassword();
+        }
+        return [
+          ..._recovery(),
+          // 设置页推入的找回流程：「返回登录」即返回设置页；
+          // 不切到登录态的「账号已登录」分区。
+          _secondary('返回登录', () async {
+            if (widget.initialRecovery && Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return;
+            }
+            _selectMode(_AuthMode.login);
+          }),
+        ];
+      }
       return _registrationFinishing ? _registrationComplete() : _account();
     }
     if (_isClosureStatus(flow) &&

@@ -155,7 +155,7 @@ void main() {
         find.byKey(const ValueKey('destination:directMessages')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('身份一'), findsOneWidget);
+      expect(find.text('身份一'), findsNWidgets(2));
       await tester.tap(find.byKey(const ValueKey('dm-inbox-identity')));
       await tester.pumpAndSettle();
       await tester.tap(
