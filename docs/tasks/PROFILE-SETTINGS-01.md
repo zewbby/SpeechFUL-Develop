@@ -327,4 +327,5 @@
 - 使用 PR #20 的 `19b8d76` 为基线，沿用同一个隔离 Worktree。校邮取码使用现有 V 验证码、限流与发码挑战；C 的登录态改密意图绑定校邮槽位、原会话及操作。在最终 C Safety Gate 事务中写密码、撤销旧会话并记录结果。原找回密码接口继续使用其自身授权用途。
 - 头像、发帖和编辑、评论及失败重选、私信、举报举证接入共用相册弹层。相册支持单选和按调用入口限制多选。照片权限采用图片授权，系统选择器用于权限回退。头像独立进入圆形裁切，预览和 PNG 输出使用同一裁切区域。
 - 当前实现差异的 Go 测试、vet、API／Verifier 构建和 OpenAPI 全量校验 PASS。WSL2 私有 PostgreSQL `AUTHLAB_EMAIL_TEST_PATTERN='^Test(PasswordChange|EmailReset)' sh authlab/run-email-login-isolated.sh` PASS，覆盖真实校邮证明、改密前会话可用、旧密码和会话失效、新密码登录及旧找回回归。Flutter widget 由 PR 产品 CI 执行，本机 NOT_RUN。原生相册权限、实际媒体读取和裁切手势的真机验收待办。
+- Flutter 3.47.5 `flutter analyze --no-pub` PASS。首轮远端运行发现多个旧 Goose 夹具仍断言迁移版本为 52，已更新至改密迁移 53，保留数据回归与拒绝破坏性回滚的断言。
 - 合并暂缓，发布未执行。[PR #20 检查](https://github.com/zewbby/SpeechFUL-Develop/pull/20/checks)。
