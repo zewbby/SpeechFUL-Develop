@@ -24,6 +24,7 @@ Future<Finder> _setting(WidgetTester tester, String title) async {
   await tester.pump();
   final item = find.text(title);
   await tester.scrollUntilVisible(item, 160, scrollable: scrollable);
+  await tester.ensureVisible(item);
   await tester.pumpAndSettle();
   return item;
 }
@@ -91,6 +92,11 @@ void main() {
       );
       await tester.pumpAndSettle();
       await _openSettings(tester);
+      final settingsContext = tester.element(find.byType(SettingsScreen));
+      expect(
+        MediaQuery.textScalerOf(settingsContext).scale(20),
+        closeTo(36, .01),
+      );
       for (final language in AppLanguage.values) {
         presentation.setLanguage(language);
         await tester.pumpAndSettle();
@@ -200,27 +206,27 @@ void main() {
       await tester.pumpAndSettle();
       await _openSettings(tester);
       await _capture(tester, '${brightness.name}-settings');
-      expect(find.text('账号与安全'), findsNothing);
-      for (final title in [
-        '语言',
-        '黑名单',
-        '设备管理',
-        '账号注销',
-        '意见反馈',
-        '支持我们',
-        '身份管理',
-        '退出登录',
+      expect(find.text('账号与安全'), findsOneWidget);
+      for (final (id, title, subtitle) in [
+        ('language', '语言', null),
+        ('blacklist', '黑名单', null),
+        ('devices', '设备管理', null),
+        ('closure', '账号注销', '七天缓冲期内可撤销'),
+        ('feedback', '意见反馈', null),
+        ('support', '支持我们', null),
+        ('identity', '身份管理', '昵称、头像与发言身份'),
+        ('logout', '退出登录', null),
       ]) {
         final item = await _setting(tester, title);
-        expect(item, findsOneWidget);
-        final row = tester.widget<ListTile>(
-          find.ancestor(of: item, matching: find.byType(ListTile)),
-        );
-        expect(
-          row.subtitle,
-          isNull,
-          reason: '$title only shows its icon and name',
-        );
+        expect(item.hitTestable(), findsOneWidget);
+        final row = find.byKey(ValueKey('settings-$id'));
+        expect(find.descendant(of: row, matching: item), findsOneWidget);
+        if (subtitle != null) {
+          expect(
+            find.descendant(of: row, matching: find.text(subtitle)),
+            findsOneWidget,
+          );
+        }
       }
       for (final title in ['语言', '意见反馈', '支持我们']) {
         final item = await _setting(tester, title);

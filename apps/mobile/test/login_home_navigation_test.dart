@@ -62,10 +62,7 @@ Future<void> disposeApp(WidgetTester tester) async {
 }
 
 Future<void> openLogoutSetting(WidgetTester tester) async {
-  await tester.tap(find.byKey(const ValueKey('feed-account')));
-  await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const ValueKey('profile-settings')));
-  await tester.pumpAndSettle();
+  await openSettingsFromHome(tester);
   await tester.scrollUntilVisible(
     find.byKey(const ValueKey('settings-logout')),
     100,
@@ -74,6 +71,8 @@ Future<void> openLogoutSetting(WidgetTester tester) async {
       matching: find.byType(Scrollable),
     ),
   );
+  await tester.ensureVisible(find.byKey(const ValueKey('settings-logout')));
+  await tester.pump();
 }
 
 Future<void> confirmSettingsLogout(WidgetTester tester) async {

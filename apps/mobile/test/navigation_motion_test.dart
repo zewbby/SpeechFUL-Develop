@@ -458,10 +458,7 @@ void main() {
               .map((paint) => paint.painter)
               .whereType<HhNavigationGlyph>()
               .single;
-          expect(
-            glyph.fillProgress,
-            reduced ? 1.0 : inExclusiveRange(0.0, 1.0),
-          );
+          expect(glyph.fillProgress, inExclusiveRange(0.0, 1.0));
           final selectedSemantics = find.ancestor(
             of: find.byKey(ValueKey('destination:${destination.name}')),
             matching: find.byWidgetPredicate(
@@ -535,7 +532,7 @@ void main() {
 
   for (final accessible in [false, true]) {
     testWidgets(
-      'reduced pop shows its destination immediately (accessible=$accessible)',
+      'platform pop keeps the slide under system flags (accessible=$accessible)',
       (tester) async {
         final navigator = GlobalKey<NavigatorState>();
         await tester.pumpWidget(
@@ -567,7 +564,8 @@ void main() {
         await tester.pump(const Duration(milliseconds: 20));
         expect(
           tester.getTopLeft(find.byKey(detail)).dx,
-          greaterThanOrEqualTo(
+          inExclusiveRange(
+            0.0,
             tester.view.physicalSize.width / tester.view.devicePixelRatio,
           ),
         );
@@ -579,7 +577,7 @@ void main() {
   }
 
   testWidgets(
-    'reduced route transitions use settled frames and keep platform durations',
+    'route transitions keep intermediate frames and platform durations',
     (tester) async {
       final navigator = GlobalKey<NavigatorState>();
       final base = ThemeData(platform: TargetPlatform.iOS);
@@ -618,12 +616,17 @@ void main() {
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 1));
-      expect(tester.getTopLeft(find.byKey(detailKey)), Offset.zero);
+      final initialOffset = tester.getTopLeft(find.byKey(detailKey)).dx;
       await tester.pump(const Duration(milliseconds: 40));
+      expect(
+        tester.getTopLeft(find.byKey(detailKey)).dx,
+        inExclusiveRange(0, initialOffset),
+      );
+      await tester.pumpAndSettle();
       expect(tester.getTopLeft(find.byKey(detailKey)), Offset.zero);
       final context = tester.element(find.byKey(detailKey));
-      expect(HhMotionRoutes.popup(context).duration, Duration.zero);
-      expect(HhMotionRoutes.sheet(context).reverseDuration, Duration.zero);
+      expect(HhMotionRoutes.popup(context).duration, HhMotion.quick);
+      expect(HhMotionRoutes.sheet(context).reverseDuration, HhMotion.quick);
       media.value = const MediaQueryData();
       await tester.pumpAndSettle();
       expect(HhMotionRoutes.popup(context).duration, HhMotion.quick);

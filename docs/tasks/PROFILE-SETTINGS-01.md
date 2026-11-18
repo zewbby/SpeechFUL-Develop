@@ -312,3 +312,9 @@
 - 用户回报已完成真机测试（本记录不替代具体设备、步骤与结果证据）。
 - 本地提交 `1ccff70`，已变基到当前 `origin/main` `b86b4fb`；`flutter analyze --no-pub apps/mobile` 0 error / 0 warning，4 条存量 info。
 - 本次授权范围：推送 `feat/profile-settings-entry` 并创建面向 `main` 的 PR；不包含合并或发布。
+
+## PR #20 CI 修复（2026-11-18）
+
+- 用户续办授权修复并推送 [PR #20](https://github.com/zewbby/SpeechFUL-Develop/pull/20)，由新子代理独立审查后，在 CI 通过且审查无阻塞时合入 `main`。本轮基于 `2449176`，目标基线 `b86b4fb`。
+- 对齐新版设置入口、分组、外观记录与已确认的动画行为，保留跨账号隔离、退出确认、身份切换、转帖操作与大字布局验证。恢复转帖更多按钮的可访问名称，并叠加应用字号与系统缩放。
+- 原提交的六条 Flutter 工作流 FAIL，见 PR 检查。修复候选的 widget 回归由 GitHub Actions 执行，本机 NOT_RUN。独立审查、合并和发布状态以 PR 和本轮交付记录为准。

@@ -1828,6 +1828,7 @@ class _ProfileFlatCard extends StatelessWidget {
                           width: 30,
                           height: 30,
                           child: IconButton(
+                            tooltip: hhText(context, '帖子更多操作'),
                             padding: EdgeInsets.zero,
                             visualDensity: VisualDensity.compact,
                             icon: Icon(

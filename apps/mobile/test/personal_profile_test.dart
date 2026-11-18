@@ -46,7 +46,7 @@ void expectProfileSelection(WidgetTester tester, int selected) {
 
 void main() {
   testWidgets(
-    'rapid personal categories and reduced-motion changes keep real selection',
+    'rapid personal categories keep real selection when navigation flags change',
     (tester) async {
       final media = ValueNotifier(const MediaQueryData(size: Size(800, 600)));
       final semantics = tester.ensureSemantics();
@@ -73,11 +73,11 @@ void main() {
         }
       }
       media.value = media.value.copyWith(accessibleNavigation: true);
-      await tester.pump();
+      await tester.pumpAndSettle();
       expectProfileSelection(tester, 0);
       for (final tab in [4, 3, 0]) {
         await tester.tap(profileTab(tab));
-        await tester.pump();
+        await tester.pumpAndSettle();
         expectProfileSelection(tester, tab);
       }
       await tester.tap(find.byTooltip('切换身份'));
@@ -85,11 +85,11 @@ void main() {
       final rotation = tester.widget<AnimatedRotation>(
         find.byType(AnimatedRotation),
       );
-      expect(rotation.duration, Duration.zero);
+      expect(rotation.duration, HhMotion.quick);
       final route = ModalRoute.of(tester.element(find.text('切换身份')))!;
-      expect(route.transitionDuration, Duration.zero);
+      expect(route.transitionDuration, greaterThan(Duration.zero));
       await tester.binding.handlePopRoute();
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(find.text('切换身份'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

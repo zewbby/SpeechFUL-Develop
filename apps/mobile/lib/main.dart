@@ -39,6 +39,28 @@ Uri _communityBaseUri() => Uri.parse(
   ),
 );
 
+class _AppTextScaler extends TextScaler {
+  const _AppTextScaler(this.platform, this.factor);
+
+  final TextScaler platform;
+  final double factor;
+
+  @override
+  double scale(double fontSize) => platform.scale(fontSize) * factor;
+
+  @override
+  double get textScaleFactor => scale(14) / 14;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _AppTextScaler &&
+      other.platform == platform &&
+      other.factor == factor;
+
+  @override
+  int get hashCode => Object.hash(platform, factor);
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final postLinks = PostLinkInbox(_communityBaseUri())..start();
@@ -1310,9 +1332,11 @@ class _HnuholeAppState extends State<HnuholeApp>
         navigatorKey: _navigatorKey,
         themeMode: _authPresentation.themeMode,
         builder: (context, child) => MediaQuery(
-          // 字体大小设置为全局缩放（设置 · 字体大小）。
           data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.linear(_authPresentation.fontScaleValue),
+            textScaler: _AppTextScaler(
+              MediaQuery.textScalerOf(context),
+              _authPresentation.fontScaleValue,
+            ),
           ),
           child: PostSharingScope(
             send: widget.sharePostText ?? PostSharingScope.nativeShare,

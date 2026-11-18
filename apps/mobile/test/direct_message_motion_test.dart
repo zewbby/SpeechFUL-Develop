@@ -182,7 +182,7 @@ void main() {
 
   for (final accessible in [false, true]) {
     testWidgets(
-      '${accessible ? 'accessible navigation' : 'disabled animations'} completes all feedback immediately',
+      '${accessible ? 'accessible navigation' : 'disabled animations'} keeps message entrance and send feedback',
       (tester) async {
         final old = message('old');
         final added = message(
@@ -197,6 +197,8 @@ void main() {
         );
         await tester.pumpWidget(app([old]));
         await tester.pumpWidget(app([old, added]));
+        expect(enterOffset(tester, 'new'), 8);
+        await tester.pumpAndSettle();
         expect(enterOffset(tester, 'new'), 0);
         expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(find.byIcon(Icons.timelapse_rounded), findsOneWidget);
@@ -211,16 +213,21 @@ void main() {
     );
   }
 
-  testWidgets('enabling reduced motion mid-entry finishes and never restarts', (
+  testWidgets('changing the navigation flag mid-entry keeps its progress', (
     tester,
   ) async {
     final old = message('old'), added = message('added');
     await tester.pumpWidget(chat.app(chat.view(messages: [old])));
     await tester.pumpWidget(chat.app(chat.view(messages: [old, added])));
     expect(enterOffset(tester, 'added'), 8);
+    await tester.pump(const Duration(milliseconds: 80));
+    final before = enterOffset(tester, 'added');
+    expect(before, inExclusiveRange(0, 8));
     await tester.pumpWidget(
       chat.app(chat.view(messages: [old, added]), accessibleNavigation: true),
     );
+    expect(enterOffset(tester, 'added'), closeTo(before, .001));
+    await tester.pumpAndSettle();
     expect(enterOffset(tester, 'added'), 0);
     await tester.pumpWidget(chat.app(chat.view(messages: [old, added])));
     expect(enterOffset(tester, 'added'), 0);
