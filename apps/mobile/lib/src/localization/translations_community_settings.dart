@@ -1,5 +1,7 @@
 // Application-owned text only. Dynamic values remain verbatim.
 const communitySettingsTranslations = <String, (String, String, String)>{
+  '选择照片': ('選擇照片', 'Select photos', '写真を選択'),
+  '照片 {v0}': ('照片 {v0}', 'Photo {v0}', '写真 {v0}'),
   '正在准备分享…': ('正在準備分享…', 'Preparing to share…', '共有を準備中…'),
   '暂时无法分享，请重试。': (
     '暫時無法分享，請重試。',
@@ -1147,11 +1149,7 @@ const communitySettingsTranslations = <String, (String, String, String)>{
     '本文のプレビューです。サイズを変えるとアプリ全体の文字が変わります。設定や「マイページ」で確認できます。',
   ),
   '账号资料': ('帳號資料', 'Account details', 'アカウント情報'),
-  '平台编号与用户名': (
-    '平台編號與用戶名',
-    'Platform ID and username',
-    'プラットフォームIDとユーザー名',
-  ),
+  '平台编号与用户名': ('平台編號與用戶名', 'Platform ID and username', 'プラットフォームIDとユーザー名'),
   '修改密码': ('修改密碼', 'Change password', 'パスワード変更'),
   '修改后其他设备需重新登录': (
     '修改後其他裝置需重新登入',

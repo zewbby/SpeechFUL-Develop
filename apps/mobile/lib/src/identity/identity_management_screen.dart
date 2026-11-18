@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import '../posts/post_photo_picker.dart';
 import 'identity_avatar.dart';
+import 'identity_avatar_flow.dart';
 import 'identity_avatar_photo.dart';
 
 import 'package:flutter/material.dart';
@@ -541,8 +543,7 @@ class _IdentityEditorState extends State<IdentityEditor> {
     if (submitted == widget.identity?.nickname &&
         (!widget.avatarEditable || _avatar == widget.identity?.avatar)) {
       setState(
-        () => _localError =
-            widget.avatarEditable ? '请修改昵称或头像' : '请修改昵称',
+        () => _localError = widget.avatarEditable ? '请修改昵称或头像' : '请修改昵称',
       );
       return;
     }
@@ -600,24 +601,25 @@ class _IdentityEditorState extends State<IdentityEditor> {
       _localError = null;
     });
     try {
-      final files = await (widget.photoPicker ?? NativePostPhotoPicker()).pick(
-        1,
-      );
-      if (!mounted ||
-          _closing ||
-          _authority != widget.sessions.authorityVersion ||
-          !widget.sessions.isAuthenticated ||
-          files.isEmpty) {
-        return;
-      }
       // New selection owns a new UUID. Unknown uploads are never attached or
       // reused by a replacement account; only confirmed references enter vault.
       final id = newAvatarAssetId();
-      if (await files.single.length() > 5 * 1024 * 1024) {
-        throw const FormatException('avatar too large');
+      final picker = widget.photoPicker;
+      final Uint8List? selected;
+      if (picker == null) {
+        selected = await pickIdentityAvatarImage(context);
+      } else {
+        final files = await picker.pick(1);
+        if (files.isEmpty) return;
+        final file = files.single;
+        if (await file.length() > 5 * 1024 * 1024) {
+          await file.release?.call();
+          throw const FormatException('avatar too large');
+        }
+        selected = await prepareIdentityAvatar(file, id);
       }
-      final selected = await prepareIdentityAvatar(files.single, id);
-      if (!mounted ||
+      if (selected == null ||
+          !mounted ||
           _closing ||
           _authority != widget.sessions.authorityVersion ||
           !widget.sessions.isAuthenticated) {
@@ -784,7 +786,9 @@ class _IdentityEditorState extends State<IdentityEditor> {
                     ),
                   ),
                 SizedBox(
-                  height: widget.avatarEditable || _localError != null ? 24 : 14,
+                  height: widget.avatarEditable || _localError != null
+                      ? 24
+                      : 14,
                 ),
                 TextFormField(
                   key: const ValueKey('identity-nickname'),

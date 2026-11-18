@@ -38,6 +38,7 @@ import 'post_models.dart';
 import 'post_images.dart';
 import 'post_protocol.dart';
 import 'post_photo_picker.dart';
+import '../media/album_photo_picker.dart';
 import 'post_theme.dart';
 import 'post_upload_models.dart';
 
