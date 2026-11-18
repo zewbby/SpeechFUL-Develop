@@ -1046,23 +1046,33 @@ class _HnuholeAppState extends State<HnuholeApp>
     await popped.whenComplete(() => _settingsRouteOpen = false);
   }
 
-  // 修改密码：复用登录页找回账号中的校邮重置密码流程（AuthScreen 找回分区）。
-  // 登录态下进入，不传 onAuthenticated 以避免“等待回主页”的忙碌锁。
   void _openPasswordReset() {
     final navigator = _navigatorKey.currentState;
-    if (navigator == null || _authRouteOpen) return;
+    final token = widget.store.current?.session?.token;
+    if (navigator == null ||
+        _authRouteOpen ||
+        token == null ||
+        !widget.sessions.isCurrentToken(token)) {
+      return;
+    }
     _authRouteOpen = true;
     navigator
         .push(
           HhSlidePageRoute<void>(
             builder: (context) => AuthScreen(
+              captchaApi: widget.api,
               sessions: widget.sessions,
               flows: widget.flows,
-              initialRecovery: true,
+              passwordChangeToken: token,
+              onAuthenticated: () {
+                _authCompletionPending = true;
+                _scheduleAuthCompletion();
+              },
             ),
           ),
         )
         .whenComplete(() {
+          _authCompletionPending = false;
           _authRouteOpen = false;
           if (mounted) _schedulePostLink();
         });
