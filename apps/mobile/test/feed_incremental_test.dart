@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hnuhole_mobile/src/posts/feed_api.dart';
 import 'package:hnuhole_mobile/src/posts/feed_controller.dart';
 import 'package:hnuhole_mobile/src/posts/post_api.dart';
+import 'package:hnuhole_mobile/src/posts/post_models.dart';
 
 import 'feed_ui_test.dart' as feed;
 import 'identity_test_support.dart';
@@ -135,6 +136,54 @@ void main() {
     expect(c.timelineItems.length, 27);
     expect(c.timelineCursor, 'old-2');
   });
+  test(
+    'displayed projection refresh patches rows in place across pages',
+    () async {
+      final api = _Api()..pages.add(_page([3, 2, 1], refresh: 'head'));
+      final c = _controller(api);
+      addTearDown(c.dispose);
+      await c.loadTimeline();
+      const nextAuthor = PostAuthor(
+        state: PostAuthorState.active,
+        avatar: 'avatar-v1:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        nickname: '更新后的身份',
+      );
+      FeedPost refreshed(int n) {
+        final old = feed.post(id: _id(n));
+        return FeedPost(
+          postId: old.postId,
+          channelId: old.channelId,
+          title: old.title,
+          author: nextAuthor,
+          publishedAt: old.publishedAt,
+          body: old.body,
+          viewCount: 1,
+          imageCount: old.imageCount,
+          tags: old.tags,
+        );
+      }
+
+      api.pageFor = (channel, cursor) => PostsPage(
+        items: cursor == null
+            ? [refreshed(4), refreshed(3)]
+            : [refreshed(2), refreshed(1)],
+        nextCursor: cursor == null ? 'next-page' : null,
+      );
+      await c.refreshDisplayedProjections();
+      expect(c.timelineItems.map((post) => post.postId), [
+        _id(3),
+        _id(2),
+        _id(1),
+      ]);
+      expect(
+        c.timelineItems.every((post) => post.author.nickname == '更新后的身份'),
+        isTrue,
+      );
+      expect(c.timelineItems.any((post) => post.postId == _id(4)), isFalse);
+      expect(c.postViewCount(_id(3)), 1260);
+      expect(api.calls.where((call) => call.startsWith('feed:')).length, 2);
+    },
+  );
   test('account reset fences an in-flight incremental result', () async {
     final api = _Api()..pages.add(_page([1], refresh: 'head'));
     final c = _controller(api);

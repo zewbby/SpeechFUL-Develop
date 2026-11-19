@@ -130,6 +130,93 @@ class FeedController extends ChangeNotifier {
     if (notify) _notify();
   }
 
+  /// Refresh the current public projection of rows already on screen after
+  /// identity metadata changes. The server list stays authoritative; reading
+  /// order, pagination and the local view count are preserved.
+  Future<void> refreshDisplayedProjections() async {
+    if (!supportsFeed || !available || _timeline.isEmpty) return;
+    final epoch = _epoch;
+    final generation = _timelineGeneration;
+    final channelId = _timelineChannelId;
+    final wanted = _timeline
+        .where((post) => !_isPostDeleted(post.postId))
+        .map((post) => post.postId)
+        .toSet();
+    if (wanted.isEmpty) return;
+    // New posts can shift page boundaries; bound the work for a removed row.
+    final maxPages = (wanted.length / 20).ceil() + 2;
+    FeedReadSession? a;
+    final seenCursors = <String>{};
+    try {
+      a = await _openSession();
+      if (!available ||
+          epoch != _epoch ||
+          generation != _timelineGeneration ||
+          channelId != _timelineChannelId ||
+          !a.isCurrent) {
+        return;
+      }
+      String? cursor;
+      for (var pages = 0; wanted.isNotEmpty && pages < maxPages; pages++) {
+        final page = await a.request(
+          (token) => _api!.timeline(
+            sessionToken: token,
+            channelId: channelId,
+            cursor: cursor,
+          ),
+        );
+        if (!available ||
+            epoch != _epoch ||
+            generation != _timelineGeneration ||
+            channelId != _timelineChannelId ||
+            !a.isCurrent) {
+          return;
+        }
+        for (final post in page.items) {
+          if (wanted.remove(post.postId)) _applyProjection(post);
+        }
+        final next = page.nextCursor;
+        if (next == null || !seenCursors.add(next)) break;
+        cursor = next;
+      }
+      if (available &&
+          epoch == _epoch &&
+          generation == _timelineGeneration &&
+          channelId == _timelineChannelId) {
+        _notify();
+      }
+    } catch (error) {
+      if (available &&
+          epoch == _epoch &&
+          generation == _timelineGeneration &&
+          channelId == _timelineChannelId) {
+        a?.reportFailure(error);
+      }
+    }
+  }
+
+  void _applyProjection(FeedPost post) {
+    final index = _timeline.indexWhere((old) => old.postId == post.postId);
+    if (index < 0) return;
+    final old = _timeline[index];
+    final views = post.viewCount > old.viewCount
+        ? post.viewCount
+        : old.viewCount;
+    _timeline[index] = FeedPost(
+      postId: post.postId,
+      channelId: post.channelId,
+      title: post.title,
+      author: post.author,
+      publishedAt: post.publishedAt,
+      tags: post.tags,
+      body: post.body,
+      viewCount: views,
+      imageCount: post.imageCount,
+      imageSizes: post.imageSizes,
+    );
+    _postViews[post.postId] = views;
+  }
+
   Future<void> loadTimeline({
     String? channelId,
     bool more = false,
