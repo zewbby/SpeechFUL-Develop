@@ -2,6 +2,16 @@
 
 记录本仓库的写入型改动，最新条目在最上面；格式与门禁见 `.agents/skills/minimal-change/SKILL.md`。
 
+## 2026-11-19 12:48 · 更换头像后刷新首页帖子投影
+
+- 状态：已完成（本地提交 `ed90104`，未推送、未合并）
+- 改动：身份头像变更返回后，`PostController.refreshKnownPosts()` 先调用新增的 `FeedController.refreshDisplayedProjections()`，按当前已显示帖子 ID 重新读取公共时间线页并原位替换标题、正文、作者、标签与图片投影，保留列表顺序、分页游标、频道条件、删除过滤和本地较大的浏览量，不把刷新期间的新帖插入当前列表；随后继续执行原有旧列表刷新。首页头像因 `FeedScreen` 读取 `homeFeed.timelineItems` 而未随身份变更更新；个人页投影原已由 `refreshPersonalProjections()` 更新，本次补回归测试。新增首页与个人页头像刷新测试，并覆盖跨页匹配、不插入新帖与浏览量保留。
+- 文件：`apps/mobile/lib/src/posts/feed_controller.dart`、`apps/mobile/lib/src/posts/post_controller.dart`、`apps/mobile/test/feed_incremental_test.dart`、`apps/mobile/test/avatar_feed_projection_test.dart`（新增）、`docs/tasks/AVATAR-FEED-PROJECTION-01.md`（新增）
+- 验证：环境 Windows 11 25H2 x64 / Flutter 3.47.5 / Dart 3.13.4，基线 `main@213b8b0`，实现提交 `ed90104`。定向 `flutter test test/feed_incremental_test.dart test/avatar_feed_projection_test.dart --no-pub -r expanded` 7 项 PASS（新增首页用例修复前失败、修复后通过）；受影响套件 `flutter test test/post_controller_test.dart test/feed_ui_test.dart test/personal_profile_test.dart test/login_home_navigation_test.dart test/active_identity_test.dart --no-pub -r compact` 118 项 PASS；`flutter analyze --no-pub` PASS；完整 `flutter test --no-pub --concurrency=2 -r compact` 1362 项通过／4 项跳过 PASS；4 个 Dart 文件 `dart format --output=none --set-exit-if-changed` 无变化；`git diff --check` PASS。完整套件运行时的代码与测试内容与该提交一致，之后仅追加文档。真机手工复验 `NOT_RUN`（未装机）；产品 CI／PR 检查 `NOT_RUN`（未推送，无 PR）。
+- 回滚：`git revert ed90104`；无迁移、服务端或发布步骤。
+- 任务：`docs/tasks/AVATAR-FEED-PROJECTION-01.md`
+- 授权：用户 2026-11-19 报告“修改头像后主页我发过帖子的头像不会改变，点进帖子页又更新，别人改头像我能看到更新”；本次授权范围为该展示同步修复，未授权 push、PR、合并、发布或部署。
+
 ## 2026-11-17 17:02 · 点击图片复用已加载预览
 
 - 状态：已完成（已推送并创建 PR [#18](https://github.com/zewbby/SpeechFUL-Develop/pull/18)，未合并）
