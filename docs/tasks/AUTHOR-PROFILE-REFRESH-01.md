@@ -3,12 +3,12 @@
 - 模式：常规
 - 负责人／状态维护人：当前 Session
 - 执行 Session：无
-- 分支／Worktree／PR：`codex/feat/author-profile-refresh`；`C:/Users/34408/.codex/worktrees/author-profile-refresh/SpeechFUL.git`；PR 未创建
+- 分支／Worktree／PR：`codex/feat/author-profile-refresh`；`C:/Users/34408/.codex/worktrees/author-profile-refresh/SpeechFUL.git`；[PR #21](https://github.com/zewbby/SpeechFUL-Develop/pull/21)
 - 本轮规则版本：`213b8b0` 的 `AGENTS.md`、`CONTRIBUTING.md` 与项目 UI Skill
 - 授权依据与边界：2026-11-19 用户要求“建立分支，进行作者主页优化，先生成html模拟，然后再实际改造，最后pr”。授权本任务开发、模拟、验证、提交、推送和创建 PR；不包含合并或发布。
-- 需求确认：优化公开作者主页的视觉与阅读层级；保留既有作者读取、分页、私信、账号级拉黑、失效作者、加载、空态、刷新和错误重试语义。不新增粉丝、关注、简介、帖子总数等当前接口不存在的数据，不增加公开账号编号或身份切换。无未决取舍。
-- 更新日期：2026-11-19
-- 状态：实现 已完成；验证 PASS（本地静态分析、联合 widget 回归与真实字体渲染；Android 构建 BLOCKED）；合并 未合并；发布 未发布
+- 需求确认：优化公开作者主页的视觉与阅读层级；保留既有作者读取、分页、私信、账号级拉黑、失效作者、加载、空态、刷新和错误重试语义。不新增粉丝、关注、简介、帖子总数等当前接口不存在的数据，不增加公开账号编号或身份切换。用户于 2026-11-20 查看 HTML 模拟后明确回复“可以，继续”，该模拟方向已确认，无未决取舍。
+- 更新日期：2026-11-20
+- 状态：实现 已完成；验证 PASS（本地静态分析、联合 widget 回归、真实字体渲染及产品 CI）；合并 未合并；发布 未发布
 
 ## 目标与范围
 
@@ -40,8 +40,11 @@
 | 静态分析 | 当前工作树；`flutter analyze --no-pub` | PASS；`No issues found!` |
 | 联合 widget 回归 | `213b8b0` 上的单提交；`flutter test --no-pub --reporter compact test/feed_ui_test.dart test/post_screens_test.dart test/author_profile_render_test.dart` | PASS；73 项，覆盖作者主页入口、分页、错误重试、失效作者、长昵称／大字号、深色主题、更多菜单拉黑、成功退出与拒绝自拉黑，以及详情／本人页相邻回归。 |
 | Flutter 真实渲染 | 同一工作树；`flutter test --no-pub --reporter expanded test/author_profile_render_test.dart` | PASS；402×874、Roboto／Noto Sans SC 真实字体输出 `apps/mobile/build/author-profile-render/light.png`、`dark.png`，已逐张检查；构建产物不入库。 |
+| 设计确认 | 2026-11-20 用户消息 | PASS；用户查看 [HTML 模拟](../design/ui-drafts/author-profile-refresh-v1.html)、完整态浅色与空态深色图后回复“可以，继续”，确认当前结构、色彩和阅读层级方向。 |
+| PR | [PR #21](https://github.com/zewbby/SpeechFUL-Develop/pull/21)，head `77448bf` | 已创建，转 Ready 前保持 draft；`mergeable_state=clean`。 |
+| 产品 CI | PR #21，head `77448bf` | PASS；22 项检查中 21 项 `success`、1 项按条件 `skipped`；最终文档提交后的 head 仍以实时 CI 为准。 |
 | Android 目标构建 | 同一工作树；`flutter build apk --debug --no-pub --target lib/main.dart --target-platform android-arm64` | BLOCKED；本机 Flutter doctor 明确 `Unable to locate Android SDK`，未发现 `ANDROID_HOME`／`adb`／`sdkmanager`。以 PR 产品 CI 的 Android 构建补证，不将本机环境失败记作代码失败。 |
 
 ## 阻碍与下一步
 
-HTML、Flutter 实现、静态分析、73 项联合回归与真实字体渲染已完成；Android 本机构建受缺失 SDK 限制。下一步推送到 `SpeechFUL-Develop` 并创建以 `develop/main@213b8b0` 为基线的 PR，等待产品 CI。
+HTML 模拟已由用户确认，Flutter 实现、静态分析、73 项联合回归、真实字体渲染与 PR 产品 CI 已完成；Android 本机构建受缺失 SDK 限制。PR 转为 Ready 后按最终 head 复核实时 CI；合并和发布仍待后续明确授权。
