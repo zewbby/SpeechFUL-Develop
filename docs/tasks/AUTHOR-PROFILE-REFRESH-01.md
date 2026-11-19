@@ -41,10 +41,10 @@
 | 联合 widget 回归 | `213b8b0` 上的单提交；`flutter test --no-pub --reporter compact test/feed_ui_test.dart test/post_screens_test.dart test/author_profile_render_test.dart` | PASS；73 项，覆盖作者主页入口、分页、错误重试、失效作者、长昵称／大字号、深色主题、更多菜单拉黑、成功退出与拒绝自拉黑，以及详情／本人页相邻回归。 |
 | Flutter 真实渲染 | 同一工作树；`flutter test --no-pub --reporter expanded test/author_profile_render_test.dart` | PASS；402×874、Roboto／Noto Sans SC 真实字体输出 `apps/mobile/build/author-profile-render/light.png`、`dark.png`，已逐张检查；构建产物不入库。 |
 | 设计确认 | 2026-11-20 用户消息 | PASS；用户查看 [HTML 模拟](../design/ui-drafts/author-profile-refresh-v1.html)、完整态浅色与空态深色图后回复“可以，继续”，确认当前结构、色彩和阅读层级方向。 |
-| PR | [PR #21](https://github.com/zewbby/SpeechFUL-Develop/pull/21)，head `77448bf` | 已创建，转 Ready 前保持 draft；`mergeable_state=clean`。 |
-| 产品 CI | PR #21，head `77448bf` | PASS；22 项检查中 21 项 `success`、1 项按条件 `skipped`；最终文档提交后的 head 仍以实时 CI 为准。 |
+| PR | [PR #21](https://github.com/zewbby/SpeechFUL-Develop/pull/21)，head `96eaa2f` | 已转为 Ready for review；`mergeable=true`、`mergeable_state=clean`。 |
+| 产品 CI | PR #21，head `96eaa2f` | PASS；23 项检查中 22 项 `success`、`actual-process-acceptance` 按条件 `skipped`，0 失败；包含 `compile`、`flutter`、`flutter-and-real-feed`、`flutter-and-android`、`candidate`、`rehearsal` 与 PostgreSQL 检查。 |
 | Android 目标构建 | 同一工作树；`flutter build apk --debug --no-pub --target lib/main.dart --target-platform android-arm64` | BLOCKED；本机 Flutter doctor 明确 `Unable to locate Android SDK`，未发现 `ANDROID_HOME`／`adb`／`sdkmanager`。以 PR 产品 CI 的 Android 构建补证，不将本机环境失败记作代码失败。 |
 
 ## 阻碍与下一步
 
-HTML 模拟已由用户确认，Flutter 实现、静态分析、73 项联合回归、真实字体渲染与 PR 产品 CI 已完成；Android 本机构建受缺失 SDK 限制。PR 转为 Ready 后按最终 head 复核实时 CI；合并和发布仍待后续明确授权。
+HTML 模拟已由用户确认，Flutter 实现、静态分析、73 项联合回归、真实字体渲染与 PR 产品 CI 已完成；Android 本机构建受缺失 SDK 限制，产品 CI 的 Android `candidate`／`rehearsal` 已补证。PR 已 Ready，合并和发布仍待后续明确授权。
