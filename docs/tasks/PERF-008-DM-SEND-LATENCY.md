@@ -50,7 +50,7 @@
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
-| 实现 | `perf/dm-send-latency` 工作区，基线 `213b8b0`，未提交 | 完成：P0/P1/P2 代码与迁移 0054 |
+| 实现 | `perf/dm-send-latency` 提交 `16eccb6`，基线 `213b8b0` | 完成：P0/P1/P2 代码与迁移 0054 |
 | Flutter 静态检查 | 同上 | `flutter analyze lib/src/messaging lib/src/posts/post_http_transport.dart lib/src/posts/http_post_api.dart` → `No issues found!`；PASS |
 | Flutter DM 测试 | 同上 | 14 个 `test/dm_*.dart`：101 passed / 3 skipped / 0 failed，覆盖 `dm_reliability_test.dart`、`dm_chat_races_test.dart`、`dm_chat_test.dart`、`dm_http_fixture_test.dart` 等；`post_http_connections_test.dart`、`post_api_test.dart`、`comment_http_test.dart`、`governance_http_test.dart`：61 passed；PASS |
 | Go 静态检查 | 同上 | WSL Ubuntu-2404：`gofmt` 后 `go build ./...`、`go vet ./internal/authprivacy/...`；PASS |
@@ -59,7 +59,7 @@
 | 查询计划 | 隔离 lab | `TestDMSenderPendingIndexPostgres` PASS：`EXPLAIN`（禁用 seqscan/bitmapscan）命中 `dm_sender_pending` |
 | 真机功能验收 | Xiaomi 15（24129PN74C，`dada`，Android 17/API 37，序列号 `4e56f5`），APK `2026111904`，隔离 C/V/PostgreSQL HTTPS fixture（WSL Ubuntu-2404，`DM_DEVICE_FIXTURE`），2026-11-19 18:25:51–18:25:56 | `flutter drive --use-existing-app` 输出 `All tests passed.` EXIT=0，测试端 `00:04 +2: All tests passed!`；覆盖首条 PUT 响应丢失→`unknown`、重开→`sent`、接收方 inbox/ACK/未读=1、回复发送、草稿与历史持久化；证据 `D:/dm-device-verify/drive_result.log`；PASS |
 | 真机发送时延（基线 `213b8b0`） | Xiaomi 15（24129PN74C，`dada`，Android 17/API 37，序列号 `4e56f5`），基线 worktree `E:/speechful-dm-baseline`，APK `2026111911`（`HNUHOLE_DM_TEXT=1`，`org.hnuhole.hnuhole_mobile.dmtext`），隔离 fixture 就绪 12:31:52，`HOST_PORT=33439` | `flutter drive --use-existing-app` 输出 `All tests passed.`；`DM_SEND_LATENCY`：稳态 5 条 3016/3982/4029/3965/4006 ms，中位 3982 ms、均值 3799.6 ms；回复 597 ms；首条（PUT 响应丢弃）533 ms→`unknown`；证据 `D:/dm-device-verify/baseline-latency.txt`；PASS |
-| 真机发送时延（修复后） | 同上设备，`perf/dm-send-latency` 工作区（本记录所列 diff），APK `2026111912`（`org.hnuhole.hnuhole_mobile.dmtext`），隔离 fixture 就绪 12:33:47，`HOST_PORT=40623` | `All tests passed.`；稳态 5 条 517/450/474/433/618 ms，中位 474 ms、均值 498.4 ms；回复 519 ms；首条 428 ms→`unknown`；证据 `D:/dm-device-verify/fixed-latency.txt`；PASS |
+| 真机发送时延（修复后） | 同上设备，`perf/dm-send-latency` 提交 `16eccb6`，APK `2026111912`（`org.hnuhole.hnuhole_mobile.dmtext`），隔离 fixture 就绪 12:33:47，`HOST_PORT=40623` | `All tests passed.`；稳态 5 条 517/450/474/433/618 ms，中位 474 ms、均值 498.4 ms；回复 519 ms；首条 428 ms→`unknown`；证据 `D:/dm-device-verify/fixed-latency.txt`；PASS |
 | 时延对比 | 同一设备、同一隔离 C/V/PostgreSQL HTTPS fixture 模式，基线/修复各 1 轮、每轮 5 条稳态样本 | 稳态中位 3982→474 ms（8.4×，-88.1%）；均值 3799.6→498.4 ms（7.6×，-86.9%）；最差 4029→618 ms（6.5×）；PASS |
 
 ## 阻碍与下一步
@@ -67,8 +67,8 @@
 - 实施中依据测试回退了“`queued` 跳过预检 GET”：`dm_reliability_test.dart` 要求离线首发重启后仍为 `queued`（可取消、未发出），`dm_chat_races_test.dart` 以该 GET 作为删除竞态的同步点。保留该 GET；P0 的连接复用、点击即发与 P1 的目录去重仍然生效。
 - 真机 fixture 的授权证据 `ValidUntil=now+5m`（`e2eAuthorizationGateControlFor`），而 fixture 自身等待 25 分钟；超过 5 分钟后 Gate 以 `EVIDENCE_EXPIRED` 冻结，后续请求均为 503 `AUTHORIZATION_UNAVAILABLE`。真机复测须在 fixture 写文件后 5 分钟内启动，否则重启 fixture。
 - 真机功能 PASS 的构建已包含 P0/P1/P2 代码；插桩测试新增 `waitForDmState` 与 `DM_SEND_LATENCY` 输出（仅 `integration_test/dm_text_device_test.dart`），用于证明 `send()` 不依赖显式 `sync()`。临时 `dm_controller.dart` 诊断输出已移除，静态检查与 DM 测试复验通过（101 passed / 3 skipped）。
-- 时延口径：从 `send()` 调用到本地行进入 `sent`（含预检 `GET commands/{id}`、`PUT`、本地 vault 提交）；每条使用唯一文本，10 ms 轮询。基线稳态样本被 4 秒轮询约束（3016–4029 ms），修复后为 433–618 ms，差异来自调度结构而非网络抖动。证据为同设备同网络、每构建 1 轮 5 样本，不构成统计基准；如需更强置信度可重复多轮。
-- 真机测试包必须设置 `HNUHOLE_DM_TEXT=1`（`android/app/build.gradle.kts` 读取该环境变量决定 `.dmtext` 后缀）。本次基线构建曾漏设，生成的 APK 实际是主包 `org.hnuhole.hnuhole_mobile`，`pm install -r` 覆盖了设备上的主应用（应用数据保留）；已从 `E:/speechful`（`fix/avatar-feed-projection`，versionCode `2026111701`）重建主应用并 `pm install -r -d` 恢复，启动验证 `topResumedActivity=org.hnuhole.hnuhole_mobile/.MainActivity`、截图 `D:/dm-device-verify/main-restored.png`。该误装不属于产品变更。
+- 时延口径：从 `send()` 调用到本地行进入 `sent`（含预检 `GET commands/{id}`、`PUT`、本地 vault 提交）；每条使用唯一文本，10 ms 轮询。基线稳态样本被 4 秒轮询约束（3016–4029 ms），修复后为 433–618 ms，差异来自调度结构而非网络抖动。修复版 APK 构建于提交 `16eccb6` 的同一工作树（构建后仅更新本记录）。证据为同设备同网络、每构建 1 轮 5 样本，不构成统计基准；如需更强置信度可重复多轮。
+- 真机测试包必须设置 `HNUHOLE_DM_TEXT=1`（`android/app/build.gradle.kts` 读取该环境变量决定 `.dmtext` 后缀）。本次基线构建曾漏设，生成的 APK 实际是主包 `org.hnuhole.hnuhole_mobile`，`pm install -r` 覆盖了设备上的主应用（应用数据保留）；已从 `E:/speechful`（`fix/avatar-feed-projection@ea62171`，versionCode `2026111701`）重建主应用并 `pm install -r -d` 恢复，启动验证 `topResumedActivity=org.hnuhole.hnuhole_mobile/.MainActivity`、截图 `D:/dm-device-verify/main-restored.png`。该误装不属于产品变更。
 - 测试工具新增 `integration_test/dm_latency_device_test.dart`，并在 `dm_text_device_test.dart` 增加 `dmTextOf`/`waitForDmState` 与 `DM_SEND_LATENCY` 输出；仅隔离测试包使用。
 - 复测命令（fixture 写文件后 5 分钟内完成）：`HNUHOLE_DM_TEXT=1 flutter build apk --debug --target=integration_test/dm_latency_device_test.dart --dart-define-from-file=D:/dm-device-verify/fixture.json --build-number=<n>`；`adb push` + `pm install -r`；`adb reverse tcp:58443 tcp:<HOST_PORT>`；`flutter drive --use-existing-app=<vm-service-uri> --driver=test_driver/auth_live_device_driver.dart --target=integration_test/dm_latency_device_test.dart`。
 - 轮询读是否必须持有全局 Gate：属于授权证据最终校验的安全边界，本次不调整；先通过减少每轮请求数降低争用，若仍需进一步优化，另开安全评审。
