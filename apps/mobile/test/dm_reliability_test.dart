@@ -690,6 +690,63 @@ void main() {
       await store.close();
     },
   );
+  test(
+    'immediate send lane publishes its receipt without an explicit sync',
+    () async {
+      final api = FakeDmApi()..hold = Completer<void>();
+      final c = DmController(api: api, openStore: (_) => open());
+      await c.bind(
+        account: 'account-a',
+        token: 'token-a',
+        identities: [own],
+        isCurrent: () => true,
+      );
+      var notifications = 0;
+      c.addListener(() => notifications++);
+      expect(await c.send(intent('即时回执')), isTrue);
+      while (api.sends == 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      final id = (await c.history(own, peer)).single['_id'] as String;
+      // The directory refresh normally finishes before the held network
+      // receipt. Any notification after this point must come from the send
+      // lane itself, not from the next 4s sync.
+      final refreshDeadline = DateTime.now().add(const Duration(seconds: 2));
+      while (notifications < 2 && DateTime.now().isBefore(refreshDeadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      expect(notifications, greaterThanOrEqualTo(2));
+      final beforeReceipt = notifications;
+      api.hold!.complete();
+      final receiptDeadline = DateTime.now().add(const Duration(seconds: 2));
+      while ((await c.message(id))?['_state'] != 'sent' &&
+          DateTime.now().isBefore(receiptDeadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      expect((await c.message(id))?['_state'], 'sent');
+      expect(notifications, greaterThan(beforeReceipt));
+      await c.detach();
+      c.dispose();
+    },
+  );
+  test('immediate send failure is visible without an explicit sync', () async {
+    final api = FakeDmApi()..offline = true;
+    final c = DmController(api: api, openStore: (_) => open());
+    await c.bind(
+      account: 'account-a',
+      token: 'token-a',
+      identities: [own],
+      isCurrent: () => true,
+    );
+    expect(await c.send(intent('离线即显')), isTrue);
+    final deadline = DateTime.now().add(const Duration(seconds: 2));
+    while (c.error == null && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    expect(c.error, contains('核对'));
+    await c.detach();
+    c.dispose();
+  });
   test('pagination and drafts stay within the identity pair', () async {
     final store = await open();
     for (var i = 0; i < 45; i++) {

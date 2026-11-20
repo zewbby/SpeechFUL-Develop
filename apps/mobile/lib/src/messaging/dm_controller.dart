@@ -505,6 +505,15 @@ class DmController extends ChangeNotifier {
       _sendKickQueued = false;
       if (!_current(epoch)) return;
       await _drainSends(epoch, store, token);
+      if (!_current(epoch)) return;
+      // send() only awaits the durable enqueue, so this lane owns the visible
+      // receipt. Publish it here instead of waiting for the next 4s sync.
+      final pendingError = _operationError;
+      if (pendingError != null) {
+        error = pendingError;
+        _operationError = null;
+      }
+      _notify();
     });
     _sendTail = task.catchError((Object _) {});
     return task;
