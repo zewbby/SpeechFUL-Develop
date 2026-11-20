@@ -8,7 +8,7 @@
 - 授权依据与边界：2026-11-19 用户要求“建立分支，进行作者主页优化，先生成html模拟，然后再实际改造，最后pr”。授权本任务开发、模拟、验证、提交、推送和创建 PR；不包含合并或发布。
 - 需求确认：优化公开作者主页的视觉与阅读层级；保留既有作者读取、分页、私信、账号级拉黑、失效作者、加载、空态、刷新和错误重试语义。不新增粉丝、关注、简介、帖子总数等当前接口不存在的数据，不增加公开账号编号或身份切换。用户于 2026-11-20 查看 HTML 模拟后明确回复“可以，继续”，该模拟方向已确认，无未决取舍。
 - 更新日期：2026-11-20
-- 状态：实现 已完成；验证 PASS（本地静态分析、联合 widget 回归、真实字体渲染及产品 CI）；合并 未合并；发布 未发布
+- 状态：实现 已完成；验证 PASS（合入主线后本地检查通过，当前 PR 的产品 CI 待验证）；合并 未合并；发布 未发布
 
 ## 目标与范围
 
@@ -44,7 +44,9 @@
 | PR | [PR #21](https://github.com/zewbby/SpeechFUL-Develop/pull/21)，head `96eaa2f` | 已转为 Ready for review；`mergeable=true`、`mergeable_state=clean`。 |
 | 产品 CI | PR #21，head `96eaa2f` | PASS；23 项检查中 22 项 `success`、`actual-process-acceptance` 按条件 `skipped`，0 失败；包含 `compile`、`flutter`、`flutter-and-real-feed`、`flutter-and-android`、`candidate`、`rehearsal` 与 PostgreSQL 检查。 |
 | Android 目标构建 | 同一工作树；`flutter build apk --debug --no-pub --target lib/main.dart --target-platform android-arm64` | BLOCKED；本机 Flutter doctor 明确 `Unable to locate Android SDK`，未发现 `ANDROID_HOME`／`adb`／`sdkmanager`。以 PR 产品 CI 的 Android 构建补证，不将本机环境失败记作代码失败。 |
+| 主线同步 | PR head `2d8a3bd` + `main@e7e8b01` | PASS；合并提交保留近期工作索引中的两条任务链接；两侧移动端补丁的 `git patch-id --stable` 均一致。 |
+| 合并后本地回归 | Windows，Flutter 3.47.5；被测合并树 `8a9e27b16092e2e07e655ff3079a91bbb9337c34`（其后只更新此任务记录） | PASS；`flutter pub get --offline --enforce-lockfile`、`flutter analyze --no-pub`、`flutter test --no-pub --reporter expanded`（`feed_ui`、`author_profile_render`、`post_screens`、`post_composer_media`、`post_controller`、`post_edit_screen`）共 147 项通过；复用了由锁定版本校验的 SQLite DLL。协作检查与 19 项脚本回归通过。 |
 
 ## 阻碍与下一步
 
-HTML 模拟已由用户确认，Flutter 实现、静态分析、73 项联合回归、真实字体渲染与 PR 产品 CI 已完成；Android 本机构建受缺失 SDK 限制，产品 CI 的 Android `candidate`／`rehearsal` 已补证。PR 已 Ready，合并和发布仍待后续明确授权。
+合入最新主线后，本地静态分析和作者主页、发帖编辑等联合回归通过。以 PR 当前 head 的产品 CI 确认 Android 构建及集成检查。PR 已 Ready，合并和发布待后续明确授权。
