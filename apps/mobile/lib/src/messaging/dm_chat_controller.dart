@@ -44,32 +44,6 @@ extension DmChatController on DmController {
       }
     }
     await _chatControls(epoch, store, token);
-    for (final identity in _identities) {
-      var after = '';
-      while (_current(epoch)) {
-        final page = await _request(
-          epoch,
-          token,
-          'GET',
-          'chat/conversations',
-          query: {'identityId': identity, if (after.isNotEmpty) 'after': after},
-        );
-        final rows = (page['items'] as List)
-            .map((v) => Map<String, dynamic>.from(v))
-            .toList();
-        if (rows.any((r) => r['identityId'] != identity)) {
-          throw const FormatException('Wrong DM identity');
-        }
-        if (!_current(epoch)) return;
-        await store.saveChatConversations(rows);
-        if (rows.length < 100) break;
-        final next = rows.last['id'] as String;
-        if (next.compareTo(after) <= 0) {
-          throw const FormatException('DM directory stalled');
-        }
-        after = next;
-      }
-    }
   }
 
   Future<void> _chatControls(int epoch, DmStore store, String token) async {

@@ -53,6 +53,10 @@ class DmController extends ChangeNotifier {
   bool Function()? _authorized;
   List<String> _identities = [];
   Future<void>? _syncing;
+  Future<void> _sendTail = Future.value();
+  int _sendTailEpoch = -1;
+  bool _sendKickQueued = false;
+  Future<void> _refreshTail = Future.value();
   Timer? _timer;
   Timer? _retryTimer;
   final _waitClocks = <String, (String, Stopwatch)>{};
@@ -128,7 +132,7 @@ class DmController extends ChangeNotifier {
         return;
       }
       _store = store;
-      await _refreshDirectory(epoch, store);
+      await _queueRefresh(epoch, store);
       if (!_current(epoch)) return;
       _notify();
       _timer = Timer.periodic(
@@ -489,11 +493,28 @@ class DmController extends ChangeNotifier {
     }
   }
 
+  Future<void> _kickSend(int epoch, DmStore store, String token) {
+    if (_sendTailEpoch != epoch) {
+      _sendTailEpoch = epoch;
+      _sendTail = Future.value();
+      _sendKickQueued = false;
+    }
+    if (_sendKickQueued) return _sendTail;
+    _sendKickQueued = true;
+    final task = _sendTail.then((_) async {
+      _sendKickQueued = false;
+      if (!_current(epoch)) return;
+      await _drainSends(epoch, store, token);
+    });
+    _sendTail = task.catchError((Object _) {});
+    return task;
+  }
+
   Future<void> _synchronize(int epoch, DmStore store, String token) async {
     final incoming = <Map<String, dynamic>>[];
     final account = _account!;
     // Independent lanes: a slow/unknown PUT cannot stop durable receive + ACK.
-    final outgoing = _drainSends(epoch, store, token);
+    final outgoing = _kickSend(epoch, store, token);
     try {
       if (chatEnabled) {
         try {
@@ -661,8 +682,7 @@ class DmController extends ChangeNotifier {
     } finally {
       if (_current(epoch)) {
         try {
-          await _refreshDirectory(epoch, store);
-          if (_current(epoch) && incoming.isNotEmpty) {
+          if (incoming.isNotEmpty) {
             await onIncoming?.call(incoming, account);
           }
         } catch (_) {}
@@ -681,8 +701,7 @@ class DmController extends ChangeNotifier {
           _operationError = null;
         }
         await _wakeAfterCooldown(epoch, store);
-        await _refreshDirectory(epoch, store);
-        _notify();
+        await _queueRefresh(epoch, store);
       }
     }
   }
@@ -712,6 +731,27 @@ class DmController extends ChangeNotifier {
     conversations = [];
     error = '当前会话暂不可用，请恢复授权后查看私信';
     _notify();
+  }
+
+  bool _refreshQueued = false;
+  int _refreshTailEpoch = -1;
+
+  Future<void> _queueRefresh(int epoch, DmStore store) {
+    if (_refreshTailEpoch != epoch) {
+      _refreshTailEpoch = epoch;
+      _refreshTail = Future.value();
+      _refreshQueued = false;
+    }
+    if (_refreshQueued) return _refreshTail;
+    _refreshQueued = true;
+    final task = _refreshTail.then((_) async {
+      _refreshQueued = false;
+      if (!_current(epoch)) return;
+      await _refreshDirectory(epoch, store);
+      if (_current(epoch)) _notify();
+    });
+    _refreshTail = task.catchError((Object _) {});
+    return task;
   }
 
   Future<void> _refreshDirectory(int epoch, DmStore store) async {
@@ -765,14 +805,12 @@ class DmController extends ChangeNotifier {
     try {
       await store.enqueue(intent, peerName: peerName);
       if (!_current(epoch)) return false;
-      // The enqueue commit is authoritative. A later projection/read failure
+      // The enqueue commit is authoritative. Show the local message now and
+      // refresh the directory in the background; a projection/read failure
       // must not report enqueue failure and invite a duplicate user send.
-      try {
-        await _refreshDirectory(epoch, store);
-      } catch (_) {}
-      if (!_current(epoch)) return false;
       _notify();
-      unawaited(sync());
+      unawaited(_kickSend(epoch, store, _token!));
+      unawaited(_queueRefresh(epoch, store));
       return true;
     } on DmQueueFull {
       if (_current(epoch)) {

@@ -8,6 +8,39 @@ import 'package:hnuhole_mobile/src/messaging/dm_controller.dart';
 import 'package:hnuhole_mobile/src/messaging/dm_store.dart';
 import 'package:hnuhole_mobile/src/posts/http_post_api.dart';
 
+String? dmTextOf(Map<String, dynamic> row) {
+  final direct = row['text'];
+  if (direct is String && direct.isNotEmpty) return direct;
+  final intent = row['intent'];
+  if (intent is Map) {
+    final value = intent['text'];
+    if (value is String) return value;
+  }
+  return null;
+}
+
+Future<Map<String, dynamic>> waitForDmState(
+  DmController controller,
+  String own,
+  String peer,
+  String text,
+  Set<String> states, {
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    final rows = await controller.history(own, peer);
+    final match = rows.where((row) => dmTextOf(row) == text).toList();
+    if (match.length == 1 && states.contains(match.single['_state'])) {
+      return match.single;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  throw TestFailure(
+    'DM message "$text" did not reach ${states.join('/')} within ${timeout.inSeconds}s',
+  );
+}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('DM P1 real Android storage and real HTTPS text recovery', (
@@ -43,6 +76,7 @@ void main() {
       final contact = await controller.contact(post, '');
       expect(contact['peerId'], ib);
       await controller.saveDraft(ia, ib, '你好，真机可靠文字');
+      final firstSend = Stopwatch()..start();
       expect(
         await controller.send({
           'identityId': ia,
@@ -55,6 +89,17 @@ void main() {
         }),
         isTrue,
       );
+      // The send lane must dispatch without an explicit sync(); the dropped
+      // response leaves the row unknown after the server committed it.
+      final first = await waitForDmState(controller, ia, ib, '你好，真机可靠文字', {
+        'unknown',
+      });
+      firstSend.stop();
+      // ignore: avoid_print
+      print(
+        'DM_SEND_LATENCY first_unknown_ms=${firstSend.elapsedMilliseconds}',
+      );
+      expect(first['_state'], 'unknown');
       await controller.sync();
       expect((await controller.history(ia, ib)).single['_state'], 'unknown');
       await controller.detach();
@@ -95,6 +140,7 @@ void main() {
       expect((unread['items'] as List).single['unread'], 1);
       await receiver.visible([incoming['_id']]);
       await receiver.sync();
+      final replySend = Stopwatch()..start();
       expect(
         await receiver.send({
           'identityId': ib,
@@ -107,6 +153,13 @@ void main() {
         }),
         isTrue,
       );
+      // The reply is a normal send: the immediate lane must reach sent without
+      // waiting for the next sync() round.
+      final reply = await waitForDmState(receiver, ib, ia, '收到，离线回复', {'sent'});
+      replySend.stop();
+      // ignore: avoid_print
+      print('DM_SEND_LATENCY reply_sent_ms=${replySend.elapsedMilliseconds}');
+      expect(reply['_state'], 'sent');
       await receiver.sync();
       await receiver.detach();
       receiver.dispose();
