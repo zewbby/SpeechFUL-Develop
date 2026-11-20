@@ -3,12 +3,12 @@
 - 模式：常规
 - 负责人／状态维护人：当前 Session
 - 执行 Session（指挥模式）：无
-- 分支／Worktree／PR：`fix/avatar-feed-projection`；基线 `main@213b8b0`，rebase 后 `develop/main@dbbc249`；本地提交 `c16b8e6`（rebase 前 `ed90104`）；PR 未创建
+- 分支／Worktree／PR：`fix/avatar-feed-projection`；基线 `main@213b8b0`，rebase 后 `develop/main@dbbc249`；实现提交 `c16b8e6`（rebase 前 `ed90104`）；PR [#25](https://github.com/zewbby/SpeechFUL-Develop/pull/25)
 - 本轮规则版本（指挥模式）：不适用
 - 授权依据与边界：用户报告“修改头像后主页我发过帖子的头像不会改变，点进帖子页又更新，别人改头像我能看到更新”。本次只修复该展示同步问题；不改服务端、OpenAPI、迁移、发布流程。用户 2026-11-20 指令“提交pr”，授权推送分支并创建 PR；合并、发布、部署仍未授权。
 - 需求确认：用户期望换头像后自己已发帖子的头像无需进入详情即可更新；同时保留详情页读取最新投影的现状。未涉及产品取舍；无未决取舍。
 - 更新日期：2026-11-20
-- 状态：实现 已完成；验证 PASS（自动化 + 真机手工，强制读取失败注入 NOT_RUN）；PR 创建中（已授权 push）；合并 未合并；发布 未发布
+- 状态：实现 已完成；验证 PASS（自动化 + 真机手工，强制读取失败注入 NOT_RUN）；PR [#25](https://github.com/zewbby/SpeechFUL-Develop/pull/25) 已创建，head `0e5a6f3` 的 24 项检查 success、1 项 skip（`actual-process-acceptance` 按设计跳过），`mergeable_state: clean`；合并 未合并；发布 未发布
 
 ## 目标与范围
 
@@ -34,8 +34,8 @@
 | --- | --- | --- |
 | 实现 | 基线 `main@213b8b0`，rebase 后 `develop/main@dbbc249`；分支 `fix/avatar-feed-projection`，本地提交 `c16b8e6`（rebase 前 `ed90104`） | `FeedController.refreshDisplayedProjections()` 按当前已显示帖子 ID 重新读取公共时间线页，原位替换标题、正文、作者、标签与图片投影，保留列表顺序、分页游标、频道条件、删除过滤和本地较大的浏览量；`PostController.refreshKnownPosts()` 在身份变更后先调用该刷新，再保留原有旧列表刷新。新增首页与个人页头像刷新回归测试，并补充跨页、默认不插入新帖和浏览量保留断言。 |
 | 验证 | `c16b8e6`（rebase 后，rebase 前 `ed90104`）；Windows 11 25H2 x64 / Flutter 3.47.5 / Dart 3.13.4 | 自动化：`flutter test test/feed_incremental_test.dart test/avatar_feed_projection_test.dart --no-pub -r expanded` → 7 项 PASS（新增首页用例修复前失败、修复后通过；个人页用例修复前后均通过）；`flutter test test/post_controller_test.dart test/feed_ui_test.dart test/personal_profile_test.dart test/login_home_navigation_test.dart test/active_identity_test.dart --no-pub -r compact` → 118 项 PASS（rebase 后复跑 120 项 PASS）；`flutter analyze --no-pub` → PASS（No issues found，rebase 后复跑 PASS）；完整 `flutter test --no-pub --concurrency=2 -r compact` → 1362 项通过、4 项跳过 PASS（rebase 前）；受影响 4 个 Dart 文件 `dart format --output=none --set-exit-if-changed` → 0 项变化；`git diff --check` → PASS。rebase 后定向与受影响套件已复跑；完整套件由 PR CI 覆盖。 |
-| 真机验证 | 设备 APK 构建于 rebase 前 HEAD `ea62171`（实现提交 `ed90104`，之后仅文档差异）；rebase 到 `dbbc249` 后修复提交为 `c16b8e6`，修复 diff 相同，设备 APK 不含 #21 的无关改动；debug APK 构建于 2026-11-20 13:17；Xiaomi `24129PN74C` / Android 17 / API 37 / arm64-v8a；`org.hnuhole.hnuhole_mobile` 1.2.0（`2026111701`）；一次性本地开发 C/V 服务（`127.0.0.1:8443/8444`，经 `adb reverse`），一次性合成账号 | 场景 1 PASS：在“校园吐槽”发布合成帖“Avatar check”后，首页已显示该帖默认字母头像；在“我的”页更换头像为橙蓝测试图，返回首页未打开详情、未重启，首条本人帖子头像原位更新为橙蓝图；帖子详情显示同一新头像；“我的”页头部与本人帖子卡片同步为新头像。场景 2 PASS（滚动保持）：将首页滚动到“作者主页验收帖 6/5/4/3”后，在“我的”页更换头像为绿星图并返回首页，四张卡片的屏幕位置与更换前逐项一致（`[39,533][1161,680]`、`[39,719][1161,1278]`、`[39,1317][1161,1876]`、`[39,1915][1161,2474]`），列表顺序未变；滚回顶部后本人帖子与页头头像均为绿星图，“我的”页头部与本人帖子卡片亦为绿星图。服务端记录头像由 `default-v1` 更新为 `avatar-v1:…`（开发库查询）。截图留存于本地未提交的 `.zcode/device-avatar-17-before-change.png`、`device-avatar-24-home-after.png`、`device-avatar-25-detail.png`、`device-avatar-26-feed-scrolled.png`、`device-avatar-27-home-green.png`、`device-avatar-28-profile-green.png`。强制身份目录读取失败/重试注入 `NOT_RUN`（未断开 C）；分页游标直接观测 `NOT_RUN`（顺序与滚动未重置，未出现列表重建）。产品 CI／PR 检查 `NOT_RUN`（未推送，无 PR）。 |
+| 真机验证 | 设备 APK 构建于 rebase 前 HEAD `ea62171`（实现提交 `ed90104`，之后仅文档差异）；rebase 到 `dbbc249` 后修复提交为 `c16b8e6`，修复 diff 相同，设备 APK 不含 #21 的无关改动；debug APK 构建于 2026-11-20 13:17；Xiaomi `24129PN74C` / Android 17 / API 37 / arm64-v8a；`org.hnuhole.hnuhole_mobile` 1.2.0（`2026111701`）；一次性本地开发 C/V 服务（`127.0.0.1:8443/8444`，经 `adb reverse`），一次性合成账号 | 场景 1 PASS：在“校园吐槽”发布合成帖“Avatar check”后，首页已显示该帖默认字母头像；在“我的”页更换头像为橙蓝测试图，返回首页未打开详情、未重启，首条本人帖子头像原位更新为橙蓝图；帖子详情显示同一新头像；“我的”页头部与本人帖子卡片同步为新头像。场景 2 PASS（滚动保持）：将首页滚动到“作者主页验收帖 6/5/4/3”后，在“我的”页更换头像为绿星图并返回首页，四张卡片的屏幕位置与更换前逐项一致（`[39,533][1161,680]`、`[39,719][1161,1278]`、`[39,1317][1161,1876]`、`[39,1915][1161,2474]`），列表顺序未变；滚回顶部后本人帖子与页头头像均为绿星图，“我的”页头部与本人帖子卡片亦为绿星图。服务端记录头像由 `default-v1` 更新为 `avatar-v1:…`（开发库查询）。截图留存于本地未提交的 `.zcode/device-avatar-17-before-change.png`、`device-avatar-24-home-after.png`、`device-avatar-25-detail.png`、`device-avatar-26-feed-scrolled.png`、`device-avatar-27-home-green.png`、`device-avatar-28-profile-green.png`。强制身份目录读取失败/重试注入 `NOT_RUN`（未断开 C）；分页游标直接观测 `NOT_RUN`（顺序与滚动未重置，未出现列表重建）。产品 CI：PR [#25](https://github.com/zewbby/SpeechFUL-Develop/pull/25) head `0e5a6f3` 的 24 项检查 success、1 项 skip（`actual-process-acceptance` 按设计跳过），无 failure，`mergeable_state: clean`。 |
 
 ## 阻碍与下一步
 
-自动化与真机主链路验证已完成：首页已显示本人帖子在换头像后原位更新，详情与“我的”页一致，列表顺序和滚动位置保持不变。强制身份目录读取失败/重试注入、分页游标直接观测仍为 `NOT_RUN`，现有自动化测试覆盖失败分支与游标保持；如需补充真机失败注入，应在不影响开发会话的前提下单独安排。用户已授权推送分支与创建 PR，正在执行；合并、发布与部署仍未授权。
+自动化与真机主链路验证已完成：首页已显示本人帖子在换头像后原位更新，详情与“我的”页一致，列表顺序和滚动位置保持不变。强制身份目录读取失败/重试注入、分页游标直接观测仍为 `NOT_RUN`，现有自动化测试覆盖失败分支与游标保持；如需补充真机失败注入，应在不影响开发会话的前提下单独安排。已推送分支并创建 PR [#25](https://github.com/zewbby/SpeechFUL-Develop/pull/25)，CI 全部通过（24 success、1 skip）；合并、发布与部署仍未授权。
