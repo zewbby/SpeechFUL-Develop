@@ -4,13 +4,14 @@
 
 ## 2026-11-19 12:48 · 更换头像后刷新首页帖子投影
 
-- 状态：已完成（本地提交 `ed90104`，未推送、未合并）
+- 状态：已完成（本地提交 `c16b8e6`，rebase 前 `ed90104`；真机验证 PASS；未推送、未合并）
 - 改动：身份头像变更返回后，`PostController.refreshKnownPosts()` 先调用新增的 `FeedController.refreshDisplayedProjections()`，按当前已显示帖子 ID 重新读取公共时间线页并原位替换标题、正文、作者、标签与图片投影，保留列表顺序、分页游标、频道条件、删除过滤和本地较大的浏览量，不把刷新期间的新帖插入当前列表；随后继续执行原有旧列表刷新。首页头像因 `FeedScreen` 读取 `homeFeed.timelineItems` 而未随身份变更更新；个人页投影原已由 `refreshPersonalProjections()` 更新，本次补回归测试。新增首页与个人页头像刷新测试，并覆盖跨页匹配、不插入新帖与浏览量保留。
 - 文件：`apps/mobile/lib/src/posts/feed_controller.dart`、`apps/mobile/lib/src/posts/post_controller.dart`、`apps/mobile/test/feed_incremental_test.dart`、`apps/mobile/test/avatar_feed_projection_test.dart`（新增）、`docs/tasks/AVATAR-FEED-PROJECTION-01.md`（新增）
-- 验证：环境 Windows 11 25H2 x64 / Flutter 3.47.5 / Dart 3.13.4，基线 `main@213b8b0`，实现提交 `ed90104`。定向 `flutter test test/feed_incremental_test.dart test/avatar_feed_projection_test.dart --no-pub -r expanded` 7 项 PASS（新增首页用例修复前失败、修复后通过）；受影响套件 `flutter test test/post_controller_test.dart test/feed_ui_test.dart test/personal_profile_test.dart test/login_home_navigation_test.dart test/active_identity_test.dart --no-pub -r compact` 118 项 PASS；`flutter analyze --no-pub` PASS；完整 `flutter test --no-pub --concurrency=2 -r compact` 1362 项通过／4 项跳过 PASS；4 个 Dart 文件 `dart format --output=none --set-exit-if-changed` 无变化；`git diff --check` PASS。完整套件运行时的代码与测试内容与该提交一致，之后仅追加文档。真机手工复验 `NOT_RUN`（未装机）；产品 CI／PR 检查 `NOT_RUN`（未推送，无 PR）。
-- 回滚：`git revert ed90104`；无迁移、服务端或发布步骤。
+- 验证：环境 Windows 11 25H2 x64 / Flutter 3.47.5 / Dart 3.13.4，基线 `main@213b8b0`，实现提交 `ed90104`；rebase 到 `develop/main@dbbc249` 后实现提交为 `c16b8e6`。定向 `flutter test test/feed_incremental_test.dart test/avatar_feed_projection_test.dart --no-pub -r expanded` 7 项 PASS（新增首页用例修复前失败、修复后通过）；受影响套件 `flutter test test/post_controller_test.dart test/feed_ui_test.dart test/personal_profile_test.dart test/login_home_navigation_test.dart test/active_identity_test.dart --no-pub -r compact` 118 项 PASS（rebase 后复跑为 120 项 PASS）；`flutter analyze --no-pub` PASS（rebase 后复跑 PASS）；完整 `flutter test --no-pub --concurrency=2 -r compact` 1362 项通过／4 项跳过 PASS（rebase 前）；4 个 Dart 文件 `dart format --output=none --set-exit-if-changed` 无变化；`git diff --check` PASS。完整套件运行时的代码与测试内容与该提交一致；rebase 后定向与受影响套件已复跑，完整套件由 PR CI 覆盖。
+- 真机验证（2026-11-20，PASS）：Xiaomi `24129PN74C`／Android 17／API 37／arm64-v8a，`org.hnuhole.hnuhole_mobile` 1.2.0（`2026111701`）debug APK，构建于 rebase 前 HEAD `ea62171`（实现提交 `ed90104`，之后仅文档差异）；rebase 到 `dbbc249` 后修复提交为 `c16b8e6`，修复 diff 相同，但设备 APK 不含 #21 的无关改动；一次性本地开发 C/V 服务经 `adb reverse` 提供 `127.0.0.1:8443/8444`，一次性合成账号发布“Avatar check”合成帖。首页已显示该帖默认字母头像后，在“我的”页更换为橙蓝测试图，返回首页未打开详情、未重启即原位更新为橙蓝图；详情与“我的”页同步。第二次在首页滚动到“作者主页验收帖 6/5/4/3”后更换为绿星图，返回首页后四张卡片的屏幕位置逐项一致，列表顺序未变，滚回顶部后本人帖子与页头均为绿星图；“我的”页亦为绿星图。服务端开发库记录头像由 `default-v1` 更新为 `avatar-v1:…`。截图留存于本地未提交的 `.zcode/device-avatar-{17,24,25,26,27,28}-*.png`。强制身份目录读取失败/重试注入与分页游标直接观测 `NOT_RUN`；产品 CI／PR 检查 `NOT_RUN`（未推送，无 PR）。
+- 回滚：`git revert c16b8e6`（rebase 前 `ed90104`）；无迁移、服务端或发布步骤。
 - 任务：`docs/tasks/AVATAR-FEED-PROJECTION-01.md`
-- 授权：用户 2026-11-19 报告“修改头像后主页我发过帖子的头像不会改变，点进帖子页又更新，别人改头像我能看到更新”；本次授权范围为该展示同步修复，未授权 push、PR、合并、发布或部署。
+- 授权：用户 2026-11-19 报告“修改头像后主页我发过帖子的头像不会改变，点进帖子页又更新，别人改头像我能看到更新”；本次授权范围为该展示同步修复。用户 2026-11-20 指令“提交pr”，授权推送分支并创建 PR；未授权合并、发布或部署。
 
 ## 2026-11-17 17:02 · 点击图片复用已加载预览
 
