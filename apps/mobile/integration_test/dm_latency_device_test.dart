@@ -146,6 +146,7 @@ void main() {
       await receiver.visible([incoming['_id']]);
       await receiver.sync();
 
+      final replyText = '延迟回复$runTag';
       final replySend = Stopwatch()..start();
       expect(
         await receiver.send({
@@ -154,18 +155,18 @@ void main() {
           'conversationId': conv,
           'sourcePostId': '',
           'sourceCommentId': '',
-          'text': '延迟回复',
+          'text': replyText,
           'attempt': 1,
         }),
         isTrue,
       );
-      await waitForDmState(receiver, ib, ia, '延迟回复', {'sent'});
+      await waitForDmState(receiver, ib, ia, replyText, {'sent'});
       replySend.stop();
       // ignore: avoid_print
       print('DM_SEND_LATENCY reply_sent_ms=${replySend.elapsedMilliseconds}');
 
       for (var i = 0; i < 5; i++) {
-        final text = '时延样本$i';
+        final text = '时延样本$runTag-$i';
         final sample = Stopwatch()..start();
         expect(
           await receiver.send({

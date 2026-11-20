@@ -75,7 +75,10 @@ void main() {
       );
       final contact = await controller.contact(post, '');
       expect(contact['peerId'], ib);
-      await controller.saveDraft(ia, ib, '你好，真机可靠文字');
+      final runTag = DateTime.now().microsecondsSinceEpoch;
+      final firstText = '你好，真机可靠文字$runTag';
+      final replyText = '收到，离线回复$runTag';
+      await controller.saveDraft(ia, ib, firstText);
       final firstSend = Stopwatch()..start();
       expect(
         await controller.send({
@@ -84,14 +87,14 @@ void main() {
           'conversationId': '',
           'sourcePostId': post,
           'sourceCommentId': '',
-          'text': '你好，真机可靠文字',
+          'text': firstText,
           'attempt': 1,
         }),
         isTrue,
       );
       // The send lane must dispatch without an explicit sync(); the dropped
       // response leaves the row unknown after the server committed it.
-      final first = await waitForDmState(controller, ia, ib, '你好，真机可靠文字', {
+      final first = await waitForDmState(controller, ia, ib, firstText, {
         'unknown',
       });
       firstSend.stop();
@@ -125,7 +128,7 @@ void main() {
         isCurrent: () => true,
       );
       final incoming = (await receiver.history(ib, ia)).single;
-      expect(incoming['text'], '你好，真机可靠文字');
+      expect(incoming['text'], firstText);
       expect(incoming['_state'], 'inbox');
       expect(
         (await api.dmRequest(b, 'GET', 'pending')).value['items'],
@@ -148,14 +151,14 @@ void main() {
           'conversationId': conv,
           'sourcePostId': '',
           'sourceCommentId': '',
-          'text': '收到，离线回复',
+          'text': replyText,
           'attempt': 1,
         }),
         isTrue,
       );
       // The reply is a normal send: the immediate lane must reach sent without
       // waiting for the next sync() round.
-      final reply = await waitForDmState(receiver, ib, ia, '收到，离线回复', {'sent'});
+      final reply = await waitForDmState(receiver, ib, ia, replyText, {'sent'});
       replySend.stop();
       // ignore: avoid_print
       print('DM_SEND_LATENCY reply_sent_ms=${replySend.elapsedMilliseconds}');
@@ -172,7 +175,7 @@ void main() {
       );
       final history = await controller.history(ia, ib);
       expect(history.length, 2);
-      expect(history.last['text'], '收到，离线回复');
+      expect(history.last['text'], replyText);
       await controller.saveDraft(ia, ib, '重开后保留的草稿');
       await controller.detach();
       controller.dispose();
