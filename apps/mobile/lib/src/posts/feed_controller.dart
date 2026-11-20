@@ -138,13 +138,17 @@ class FeedController extends ChangeNotifier {
     final epoch = _epoch;
     final generation = _timelineGeneration;
     final channelId = _timelineChannelId;
-    final wanted = _timeline
+    final wantedPosts = _timeline
         .where((post) => !_isPostDeleted(post.postId))
-        .map((post) => post.postId)
-        .toSet();
-    if (wanted.isEmpty) return;
-    // New posts can shift page boundaries; bound the work for a removed row.
-    final maxPages = (wanted.length / 20).ceil() + 2;
+        .toList();
+    if (wantedPosts.isEmpty) return;
+    final wanted = wantedPosts.map((post) => post.postId).toSet();
+    // Pages are newest-first, so the scan can stop once it passes the oldest
+    // displayed row. A fixed page count would miss rows after enough new posts
+    // shifted every page boundary.
+    final oldestWanted = wantedPosts
+        .map((post) => post.publishedAt)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
     FeedReadSession? a;
     final seenCursors = <String>{};
     try {
@@ -157,7 +161,7 @@ class FeedController extends ChangeNotifier {
         return;
       }
       String? cursor;
-      for (var pages = 0; wanted.isNotEmpty && pages < maxPages; pages++) {
+      while (wanted.isNotEmpty) {
         final page = await a.request(
           (token) => _api!.timeline(
             sessionToken: token,
@@ -176,7 +180,10 @@ class FeedController extends ChangeNotifier {
           if (wanted.remove(post.postId)) _applyProjection(post);
         }
         final next = page.nextCursor;
-        if (next == null || !seenCursors.add(next)) break;
+        if (next == null || page.items.isEmpty || !seenCursors.add(next)) break;
+        if (page.items.any((post) => post.publishedAt.isBefore(oldestWanted))) {
+          break;
+        }
         cursor = next;
       }
       if (available &&
@@ -199,9 +206,11 @@ class FeedController extends ChangeNotifier {
     final index = _timeline.indexWhere((old) => old.postId == post.postId);
     if (index < 0) return;
     final old = _timeline[index];
-    final views = post.viewCount > old.viewCount
+    final known = _postViews[post.postId] ?? 0;
+    final listed = post.viewCount > old.viewCount
         ? post.viewCount
         : old.viewCount;
+    final views = listed > known ? listed : known;
     _timeline[index] = FeedPost(
       postId: post.postId,
       channelId: post.channelId,

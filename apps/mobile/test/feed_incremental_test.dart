@@ -59,6 +59,24 @@ FeedController _controller(_Api api) => FeedController(
   isPostDeleted: (_) => false,
 );
 
+const _nextAuthor = PostAuthor(
+  state: PostAuthorState.active,
+  avatar: 'avatar-v1:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  nickname: '更新后的身份',
+);
+
+FeedPost _refreshed(FeedPost old, {int viewCount = 1}) => FeedPost(
+  postId: old.postId,
+  channelId: old.channelId,
+  title: old.title,
+  author: _nextAuthor,
+  publishedAt: old.publishedAt,
+  body: old.body,
+  viewCount: viewCount,
+  imageCount: old.imageCount,
+  tags: old.tags,
+);
+
 void main() {
   testWidgets('pull refresh fills gaps and load more retains the old cursor', (
     tester,
@@ -182,6 +200,96 @@ void main() {
       expect(c.timelineItems.any((post) => post.postId == _id(4)), isFalse);
       expect(c.postViewCount(_id(3)), 1260);
       expect(api.calls.where((call) => call.startsWith('feed:')).length, 2);
+    },
+  );
+  test(
+    'projection refresh keeps a larger locally observed view count',
+    () async {
+      final api = _Api()..pages.add(_page([1], refresh: 'head'));
+      final c = _controller(api);
+      addTearDown(c.dispose);
+      await c.loadTimeline();
+      expect(c.postViewCount(_id(1)), 1260);
+      api.views = 5000;
+      await c.registerVisiblePost(_id(1));
+      expect(c.postViewCount(_id(1)), 5000);
+
+      api.pageFor = (channel, cursor) => PostsPage(
+        items: [_refreshed(feed.post(id: _id(1)), viewCount: 1)],
+        nextCursor: null,
+      );
+      await c.refreshDisplayedProjections();
+
+      expect(c.postViewCount(_id(1)), 5000);
+      expect(c.timelineItems.single.author.nickname, _nextAuthor.nickname);
+      expect(c.timelineItems.single.viewCount, 5000);
+    },
+  );
+  test(
+    'projection refresh follows page shifts until the oldest displayed row',
+    () async {
+      final displayed = [
+        for (var n = 20; n >= 1; n--)
+          feed.post(
+            id: _id(n),
+            publishedAt: feed.at.add(Duration(minutes: n)),
+          ),
+      ];
+      final api = _Api()
+        ..pages.add(
+          FeedWindow(
+            items: displayed,
+            nextCursor: 'displayed-older',
+            refreshCursor: null,
+            insertAfter: null,
+          ),
+        );
+      final c = _controller(api);
+      addTearDown(c.dispose);
+      await c.loadTimeline();
+      expect(c.timelineItems, hasLength(20));
+
+      final server = [
+        for (var i = 1; i <= 41; i++)
+          feed.post(
+            id: _id(1000 + i),
+            publishedAt: feed.at.add(Duration(minutes: 100 - i)),
+          ),
+        for (final post in displayed) _refreshed(post),
+        for (var i = 0; i < 19; i++)
+          feed.post(
+            id: _id(2000 + i),
+            publishedAt: feed.at.subtract(Duration(minutes: i + 1)),
+          ),
+      ];
+      api.pageFor = (channel, cursor) {
+        final start = switch (cursor) {
+          null => 0,
+          'page-2' => 20,
+          'page-3' => 40,
+          'page-4' => 60,
+          _ => throw StateError('unexpected cursor $cursor'),
+        };
+        final end = start + 20 > server.length ? server.length : start + 20;
+        return PostsPage(
+          items: server.sublist(start, end),
+          nextCursor: 'page-${start ~/ 20 + 2}',
+        );
+      };
+
+      await c.refreshDisplayedProjections();
+
+      expect(c.timelineItems.map((post) => post.postId), [
+        for (var n = 20; n >= 1; n--) _id(n),
+      ]);
+      expect(
+        c.timelineItems.every(
+          (post) => post.author.nickname == _nextAuthor.nickname,
+        ),
+        isTrue,
+      );
+      // Page 4 ends past the oldest displayed row, so page 5 must not load.
+      expect(api.calls.where((call) => call.startsWith('feed:')).length, 4);
     },
   );
   test('account reset fences an in-flight incremental result', () async {
