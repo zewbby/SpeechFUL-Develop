@@ -3,7 +3,7 @@
 - 模式：常规
 - 负责人／状态维护人：当前 Session
 - 执行 Session（指挥模式）：无
-- 分支／Worktree／PR：`codex/fix/unread-badges-avatar-refresh`；`E:/code_collection/java_code/SpeechFUL-verify-unread-avatar`；PR 未创建
+- 分支／Worktree／PR：`codex/fix/unread-badges-avatar-refresh`；`E:/code_collection/java_code/SpeechFUL-verify-unread-avatar`；[PR #27](https://github.com/zewbby/SpeechFUL-Develop/pull/27)
 - 本轮规则版本（指挥模式）：不适用
 - 授权依据与边界：用户 2026-11-22 要求新建分支并完成 PR，范围为铃铛通知、私信入口未读角标，以及头像更新后个人页收藏、喜欢等子页面卡片头像自动刷新；未授权合并、部署或发布，也不改动正式数据。
 - 需求确认：铃铛通知和私信底栏入口在存在未读时显示角标；头像保存并返回个人页后，已加载的喜欢、收藏及其他身份投影子页不得继续显示旧头像。无未决取舍；采用不改变布局的主题色圆点，不新增未读数协议或改变已读语义。
@@ -35,13 +35,13 @@
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
-| 实现 | `develop/main@3166ca9` 加本任务代码、测试与任务记录差异 | 完成通知启动／回前台统计、底栏私信汇总、导航圆点及个人页身份投影失效；未改接口、迁移或已读规则。 |
+| 实现 | `develop/main@3166ca9` 加本任务代码提交 `2ff5273` | 完成通知启动／回前台统计、底栏私信汇总、导航圆点及个人页身份投影失效；未改接口、迁移或已读规则。 |
 | 静态检查 | Windows；Flutter 3.47.5／Dart 3.13.4；`apps/mobile` | PASS：`flutter analyze --no-pub` 无问题；Dart format 与 `git diff --check` PASS。 |
 | 聚焦回归 | 同一基线加本任务差异；Windows host tests | PASS：7 个文件 56 项。覆盖通知角标显隐、私信会话角标、导航无页面重建、48dp 触控、头像更新后喜欢／收藏重载、通知列表、导航动效和身份管理。 |
 | 渲染检查 | 320×180 逻辑像素，真实字体，浅色／深色宿主渲染 | PASS：实际查看两张 PNG；铃铛和私信右上角 8dp 圆点位置正确，图标无挤压或遮挡。 |
 | Android 构建 | Windows 当前环境 | NOT_RUN：未安装 Android SDK，`flutter build apk --debug --no-pub --target-platform android-arm64` 在环境检查阶段停止；不代表代码编译失败。 |
-| 远端 CI | PR head | NOT_RUN：分支尚未推送；公开 `origin` 仓库拒绝当前账号推送，改向可写研发远端 `develop` 提交 PR。 |
+| 远端 CI | PR #27 head | NOT_RUN：PR 已创建，等待当前 head 的适用产品 CI。 |
 
 ## 阻碍与下一步
 
-本地实现、静态检查和 56 项聚焦回归已完成。公开仓库推送权限不足，因此正式 PR 使用 `develop` 研发远端；完成推送后以 PR head 的 Flutter／产品 CI 为准，Android 构建和真机显示仍需具备 SDK／设备的环境补验。合并与发布未获授权。
+本地实现、静态检查、56 项聚焦回归和 PR 创建已完成。公开仓库推送权限不足，因此正式 PR 使用 `develop` 研发远端；后续以 PR #27 当前 head 的 Flutter／产品 CI 为准，Android 构建和真机显示仍需具备 SDK／设备的环境补验。合并与发布未获授权。
