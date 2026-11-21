@@ -67,6 +67,10 @@ class DmController extends ChangeNotifier {
   String? get error => _failedDrafts.isNotEmpty ? '草稿保存失败，请保留当前页面' : _error;
   set error(String? value) => _error = value;
   String? _operationError;
+  // The send lane can publish a pending operation notice while a sync is
+  // still running. Count those publications so a later successful sync does
+  // not clear that newer error.
+  int _immediateErrorRevision = 0;
   bool get available =>
       _store != null && _authorized?.call() == true && !_disposed;
   String get scope => '${_account ?? ''}:$_epoch';
@@ -512,6 +516,7 @@ class DmController extends ChangeNotifier {
       if (pendingError != null) {
         error = pendingError;
         _operationError = null;
+        ++_immediateErrorRevision;
       }
       _notify();
     });
@@ -522,6 +527,7 @@ class DmController extends ChangeNotifier {
   Future<void> _synchronize(int epoch, DmStore store, String token) async {
     final incoming = <Map<String, dynamic>>[];
     final account = _account!;
+    final immediateErrorRevision = _immediateErrorRevision;
     // Independent lanes: a slow/unknown PUT cannot stop durable receive + ACK.
     final outgoing = _kickSend(epoch, store, token);
     try {
@@ -677,8 +683,15 @@ class DmController extends ChangeNotifier {
       }
       if (chatEnabled) await _chatControls(epoch, store, token);
       if (!_current(epoch)) return;
-      error = _operationError;
-      _operationError = null;
+      final pendingError = _operationError;
+      if (pendingError != null) {
+        error = pendingError;
+        _operationError = null;
+      } else if (_immediateErrorRevision == immediateErrorRevision) {
+        // No send lane published a newer notice during this sync, so a fully
+        // successful pass can clear an error left by the previous one.
+        error = null;
+      }
     } on PostFailure catch (e) {
       if (!_current(epoch)) return;
       _stopForFailure(e, token);

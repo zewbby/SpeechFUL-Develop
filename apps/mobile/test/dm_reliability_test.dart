@@ -46,6 +46,8 @@ class FakeDmApi implements DmApi {
   String? sendUnavailableCode;
   final putIds = <String>[];
   Completer<void>? hold;
+  Completer<void>? holdConversations;
+  Completer<void>? conversationsReached;
   @override
   Future<PostResponse<Map<String, dynamic>>> dmRequest(
     String token,
@@ -137,6 +139,9 @@ class FakeDmApi implements DmApi {
     } else if (resource == 'pending') {
       result = {'items': List.of(pending)};
     } else if (resource == 'conversations') {
+      final reached = conversationsReached;
+      if (reached != null && !reached.isCompleted) reached.complete();
+      if (holdConversations != null) await holdConversations!.future;
       result = {'items': []};
     } else {
       final ids = (body!['messageIds'] as List).cast<String>();
@@ -747,6 +752,60 @@ void main() {
     await c.detach();
     c.dispose();
   });
+  test(
+    'a send receipt during sync cannot erase the pending ACK notice',
+    () async {
+      final api = FakeDmApi()..failAck = true;
+      late DmStore active;
+      final c = DmController(
+        api: api,
+        openStore: (_) async => active = await open(),
+      );
+      await c.bind(
+        account: 'account-a',
+        token: 'token-a',
+        identities: [own],
+        isCurrent: () => true,
+      );
+      await active.receive([
+        {
+          'messageId': dmId(),
+          'conversationId': conversation,
+          'identityId': own,
+          'senderId': peer,
+          'sequence': 1,
+          'text': '待补 ACK',
+          'acceptedAt': '2026-10-21T16:00:00Z',
+        },
+      ]);
+      final sending = await active.enqueue(intent('同步内发送'));
+      api
+        ..hold = Completer<void>()
+        ..holdConversations = Completer<void>()
+        ..conversationsReached = Completer<void>();
+      final syncing = c.sync();
+      await api.conversationsReached!.future.timeout(
+        const Duration(seconds: 2),
+      );
+      // The receive lane failed its ACK and is parked before publishing. Let
+      // the send lane finish and publish the pending notice first.
+      api.hold!.complete();
+      final deadline = DateTime.now().add(const Duration(seconds: 2));
+      while ((await active.get(sending))?['_state'] != 'sent' &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      while (c.error == null && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      expect(c.error, contains('核对'));
+      api.holdConversations!.complete();
+      await syncing;
+      expect(c.error, contains('核对'));
+      await c.detach();
+      c.dispose();
+    },
+  );
   test('pagination and drafts stay within the identity pair', () async {
     final store = await open();
     for (var i = 0; i < 45; i++) {
