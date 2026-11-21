@@ -560,6 +560,7 @@ class _HnuholeAppState extends State<HnuholeApp>
   final _homeChannels = <String, String?>{};
   late final Listenable _postRouteChanges;
   bool _messagesRouteOpen = false;
+  late final ValueNotifier<HhNavigationUnread> _navigationUnread;
   String? _dmInitialIdentity;
   int _dmInboxRevision = 0;
   bool _handlingDmTap = false;
@@ -643,6 +644,18 @@ class _HnuholeAppState extends State<HnuholeApp>
       if (mounted) unawaited(_dmNotificationChanged());
     });
     WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  void _syncNavigationUnread() {
+    final conversations = widget.dm?.controller.conversations ?? const [];
+    final next = (
+      messages: widget.governance?.hasUnread == true,
+      directMessages: conversations.any((row) {
+        final unread = row['unread'];
+        return unread is int && unread > 0;
+      }),
+    );
+    if (next != _navigationUnread.value) _navigationUnread.value = next;
   }
 
   void _selectPrimary(AppDestination destination) {
@@ -776,6 +789,10 @@ class _HnuholeAppState extends State<HnuholeApp>
     _sessionRouteChanged();
     _startAuthentication();
     widget.dm?.controller.addListener(_scheduleDmNotification);
+    _navigationUnread = ValueNotifier(hhNoNavigationUnread);
+    widget.governance?.addListener(_syncNavigationUnread);
+    widget.dm?.controller.addListener(_syncNavigationUnread);
+    _syncNavigationUnread();
     widget.dmNotifications?.onTap = _scheduleDmNotification;
     unawaited(
       widget.dmNotifications?.start().then((_) => _scheduleDmNotification()),
@@ -860,6 +877,8 @@ class _HnuholeAppState extends State<HnuholeApp>
       unawaited(widget.flows.refreshPasskeySupport());
       unawaited(widget.sessions.onActivity());
       unawaited(widget.dm?.controller.sync());
+      final governance = widget.governance;
+      if (governance != null) unawaited(governance.refreshInboxUnread());
     }
   }
 
@@ -1301,6 +1320,9 @@ class _HnuholeAppState extends State<HnuholeApp>
     widget.governance?.bindActiveIdentity(null);
     _activeIdentity.dispose();
     widget.dm?.controller.removeListener(_scheduleDmNotification);
+    widget.governance?.removeListener(_syncNavigationUnread);
+    widget.dm?.controller.removeListener(_syncNavigationUnread);
+    _navigationUnread.dispose();
     widget.dmNotifications?.dispose();
     widget.dm?.dispose();
     _authPresentation.removeListener(_syncNotificationLanguage);
@@ -1404,6 +1426,7 @@ class _HnuholeAppState extends State<HnuholeApp>
                   key: _primaryTabs,
                   window: _postWindow.value,
                   onSelected: _selectPrimary,
+                  unread: _navigationUnread,
                   builders: {
                     AppDestination.home: (_) => FeedScreen(
                       // New authorization owns fresh protected data. Its channel
