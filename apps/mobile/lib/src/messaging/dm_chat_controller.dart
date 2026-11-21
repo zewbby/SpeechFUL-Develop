@@ -125,9 +125,10 @@ extension DmChatController on DmController {
       await _store!.enqueueChat(intent, mediaIds);
       if (!_current(epoch)) return false;
       try {
-        await _refreshDirectory(epoch, _store!);
-      } catch (_) {}
-      _notify();
+        await _queueRefresh(epoch, _store!);
+      } catch (_) {
+        if (_current(epoch)) _notify();
+      }
       unawaited(sync());
       return true;
     } on DmQueueFull {
@@ -191,8 +192,7 @@ extension DmChatController on DmController {
     final epoch = _epoch;
     await _store!.hideMessage(id);
     if (_current(epoch)) {
-      await _refreshDirectory(epoch, _store!);
-      _notify();
+      await _queueRefresh(epoch, _store!);
     }
   }
 

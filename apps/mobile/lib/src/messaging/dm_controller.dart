@@ -442,6 +442,8 @@ class DmController extends ChangeNotifier {
           }
         }
         if (chatEnabled) await store.eraseHiddenResolved(id);
+        // Publish the new preview and any server-assigned conversation ID.
+        if (_current(epoch)) unawaited(_queueRefresh(epoch, store));
       } else {
         final read = state == 'read_pending';
         await _request(
@@ -704,7 +706,9 @@ class DmController extends ChangeNotifier {
     } finally {
       if (_current(epoch)) {
         try {
-          if (incoming.isNotEmpty) {
+          // Notifications use this directory to resolve the peer and mute state.
+          await _queueRefresh(epoch, store);
+          if (_current(epoch) && incoming.isNotEmpty) {
             await onIncoming?.call(incoming, account);
           }
         } catch (_) {}
@@ -721,9 +725,10 @@ class DmController extends ChangeNotifier {
         if (_operationError != null) {
           error = _operationError;
           _operationError = null;
+          _notify();
         }
         await _wakeAfterCooldown(epoch, store);
-        await _queueRefresh(epoch, store);
+        if (_current(epoch)) await _refreshTail;
       }
     }
   }
@@ -755,23 +760,27 @@ class DmController extends ChangeNotifier {
     _notify();
   }
 
-  bool _refreshQueued = false;
+  Future<void>? _queuedRefresh;
   int _refreshTailEpoch = -1;
 
   Future<void> _queueRefresh(int epoch, DmStore store) {
     if (_refreshTailEpoch != epoch) {
       _refreshTailEpoch = epoch;
       _refreshTail = Future.value();
-      _refreshQueued = false;
+      _queuedRefresh = null;
     }
-    if (_refreshQueued) return _refreshTail;
-    _refreshQueued = true;
+    final queued = _queuedRefresh;
+    if (queued != null) return queued;
     final task = _refreshTail.then((_) async {
-      _refreshQueued = false;
+      if (_refreshTailEpoch != epoch) return;
+      _queuedRefresh = null;
       if (!_current(epoch)) return;
       await _refreshDirectory(epoch, store);
       if (_current(epoch)) _notify();
     });
+    _queuedRefresh = task;
+    // Keep the queue usable after a read failure. Callers awaiting this
+    // refresh must still see that failure before using the directory.
     _refreshTail = task.catchError((Object _) {});
     return task;
   }

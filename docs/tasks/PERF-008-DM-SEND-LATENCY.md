@@ -3,7 +3,7 @@
 - 模式：常规
 - 负责人／状态维护人：当前 Session
 - 执行 Session（指挥模式）：无
-- 分支／Worktree／PR：`perf/dm-send-latency`，目标 `develop/main@c6d98df`，分支起点 `dbbc249`，merge-base `213b8b0`，远端代码 head `87205c2`（本地代码 head `69044bb`；其后仅文档提交），代码合并树 `0c8f685`（与 `refs/pull/24/merge` `c5d94fd` 的树一致）；Worktree `E:/speechful-dm-send-latency`；PR [#24](https://github.com/zewbby/SpeechFUL-Develop/pull/24)
+- 分支／PR：`perf/dm-send-latency` → `main`，[#24](https://github.com/zewbby/SpeechFUL-Develop/pull/24)。本轮基于 PR head `2fc0590` 修复，核对目标 `f1a79b6`，merge-base `213b8b0`。
 - 本轮规则版本（指挥模式）：不适用
 - 授权依据与边界：用户 2026-11-19 指令“按照顺序修复”，对应本 Session 已报告的 P0/P1/P2；2026-11-20 指令“提pr”，授权 push 任务分支与创建 PR；2026-11-20 指令“修复这鞋问题”，授权修复 PR #24/#25 的审查问题；2026-11-21 指令“推送最新pr”“修复ci”，授权推送最新提交并重跑失败的 CI。仅修改私信发送调度、私信轮询去重、私信 PUT 连接复用与 DM 未 ACK 部分索引；不改变 `PENDING_LIMIT` 4096 语义、不改变全局授权 Gate 架构；未授权合并与部署。
 - 需求确认：已确认诊断与修复顺序。P0：点击即发独立通道、PUT 保持连接、`send()` 不阻塞目录刷新。P1：去掉每轮重复目录请求与重复目录刷新。P2：为发送事务的 outstanding 计数增加部分索引，并把计数移到最终事务的 prepare 阶段；同一账号的发送在最终事务中已先锁账号行，计数仍与提交串行，4096 上限不变。实施中依据测试回退了“`queued` 跳过预检 GET”：离线首发必须保持 `queued`（未发出、可取消），不能为省一个 RTT 把未发送消息标成 `unknown`。未决取舍：无。
@@ -47,6 +47,15 @@
 - 迁移在 fresh/upgrade 库通过，发送计数查询计划命中新索引。
 
 ## 当前进度与证据
+
+### PR #24 目录刷新回归修复（2026-11-21）
+
+- 用户授权修复审查 P1/P2、在验证通过后推送原 PR。本轮新增回归测试仅保留在本地。
+- 收信完成后先刷新会话目录，再按当前会话的免打扰状态决定是否提醒。未读数可以在发送 PUT 等待期间更新。发送回执落库后刷新列表中的消息状态和正式会话 ID。
+- Windows、Flutter 3.47.5，基线 `2fc0590` 加本提交的两个私信控制器差异。首条通知、慢发送期间未读更新、首发回执更新目录三项本地用例，修复前 3 FAIL，修复后 3 PASS。
+- `flutter test --no-pub` 运行全部 `dm_*_test.dart`、`post_http_connections_test.dart` 和上述本地用例，115 PASS、3 SKIP。跳过项需要外部 fixture。`flutter analyze --no-pub lib/src/messaging` PASS。本轮 Android 真机 NOT_RUN。
+
+### 前期实现与验证
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
