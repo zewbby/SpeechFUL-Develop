@@ -4,13 +4,13 @@
 
 ## 2026-11-20 · 投影刷新修正：页面位移与本地浏览量
 
-- 状态：已完成（实现提交 `01adb68`；自动化 PASS；真机复测与 CI `NOT_RUN`，新 head 尚未推送；未合并）
+- 状态：已完成（实现提交 `01adb68`；自动化 PASS；真机复测 `NOT_RUN`；新 head `fab02f7` 已推送，CI PASS（24 success、1 skip）；未合并）
 - 改动：`FeedController.refreshDisplayedProjections()` 不再用“已显示帖子数 / 20 + 2”的固定页数终止翻页；公共时间线按 `publishedAt` 倒序，改为翻到严格早于最早已显示帖子的页即停止，头部新增 41 条以上帖子导致页面整体位移时仍能刷新最旧可见行，并保留游标循环检测与空页退出。`_applyProjection()` 把服务端值、列表旧值与本地 `_postViews` 三者取最大，避免投影刷新用较小值覆盖详情页或上一次读取得到的较大浏览量。新增两项回归测试：本地 5000 浏览量不被服务端 1 覆盖；41 条新帖位移后 20 条已显示帖子全部刷新且不请求额外页。
 - 文件：`apps/mobile/lib/src/posts/feed_controller.dart`、`apps/mobile/test/feed_incremental_test.dart`、`docs/tasks/AVATAR-FEED-PROJECTION-01.md`、`docs/CHANGELOG.md`
-- 验证：环境 Windows 11 25H2 x64 / Flutter 3.47.5 / Dart 3.13.4，基线 `develop/main@dbbc249`，实现提交 `01adb68`。`flutter test --no-pub test/avatar_feed_projection_test.dart test/feed_incremental_test.dart test/feed_ui_test.dart -r compact` → 52 项 PASS；`flutter test --no-pub test/post_controller_test.dart test/personal_profile_test.dart test/login_home_navigation_test.dart test/active_identity_test.dart -r compact` → 77 项 PASS；完整 `flutter test --no-pub --concurrency=2 -r compact` → 1372 项通过、4 项跳过 PASS。两项新增用例在临时回退 `feed_controller.dart` 时按预期失败（浏览量 5000→1260、最旧可见帖子头像未更新）；`flutter analyze --no-pub` → `No issues found!`；`dart format --output=none --set-exit-if-changed` → 0 项变化；`git diff --check` → PASS。真机复测与产品 CI 为 `NOT_RUN`：`01adb68` 尚未推送，现有 PR CI 证据属于旧 head `0e5a6f3`。
+- 验证：环境 Windows 11 25H2 x64 / Flutter 3.47.5 / Dart 3.13.4，基线 `develop/main@dbbc249`，实现提交 `01adb68`。`flutter test --no-pub test/avatar_feed_projection_test.dart test/feed_incremental_test.dart test/feed_ui_test.dart -r compact` → 52 项 PASS；`flutter test --no-pub test/post_controller_test.dart test/personal_profile_test.dart test/login_home_navigation_test.dart test/active_identity_test.dart -r compact` → 77 项 PASS；完整 `flutter test --no-pub --concurrency=2 -r compact` → 1372 项通过、4 项跳过 PASS。两项新增用例在临时回退 `feed_controller.dart` 时按预期失败（浏览量 5000→1260、最旧可见帖子头像未更新）；`flutter analyze --no-pub` → `No issues found!`；`dart format --output=none --set-exit-if-changed` → 0 项变化；`git diff --check` → PASS。真机复测为 `NOT_RUN`。`01adb68` 及后续文档提交已推送至 PR head `fab02f7`；首次 CI 因 `plugins.gradle.org` 瞬时无法解析 Kotlin 2.2.21 失败，重跑失败 job 后 24 success、1 skip、0 failure PASS。
 - 回滚：`git revert 01adb68`；无迁移、服务端或发布步骤。
 - 任务：`docs/tasks/AVATAR-FEED-PROJECTION-01.md`
-- 授权：用户 2026-11-20 指令“修复这鞋问题”，授权修复 PR #24/#25 的审查问题；未授权 push、合并、发布或部署。
+- 授权：用户 2026-11-20 指令“修复这鞋问题”，授权修复 PR #24/#25 的审查问题；2026-11-21 指令“推送最新pr”“修复ci”，授权推送最新提交并重跑失败的 CI；未授权合并、发布或部署。
 
 ## 2026-11-19 12:48 · 更换头像后刷新首页帖子投影
 
