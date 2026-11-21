@@ -3,7 +3,7 @@
 - 模式：常规
 - 负责人／状态维护人：当前 Session
 - 执行 Session（指挥模式）：无
-- 分支／Worktree／PR：`perf/dm-send-latency`，基线 `develop/main@dbbc249`，merge-base `213b8b0`，head `69044bb`，合并候选树 `5da6fa1`；Worktree `E:/speechful-dm-send-latency`；PR [#24](https://github.com/zewbby/SpeechFUL-Develop/pull/24)
+- 分支／Worktree／PR：`perf/dm-send-latency`，基线 `develop/main@dbbc249`，merge-base `213b8b0`，本地 head `69044bb`（文档提交另计），远端 PR head `8e0526f`，合并候选树 `5da6fa1`；Worktree `E:/speechful-dm-send-latency`；PR [#24](https://github.com/zewbby/SpeechFUL-Develop/pull/24)
 - 本轮规则版本（指挥模式）：不适用
 - 授权依据与边界：用户 2026-11-19 指令“按照顺序修复”，对应本 Session 已报告的 P0/P1/P2；2026-11-20 指令“提pr”，授权 push 任务分支与创建 PR；2026-11-20 指令“修复这鞋问题”，授权修复 PR #24/#25 的审查问题。仅修改私信发送调度、私信轮询去重、私信 PUT 连接复用与 DM 未 ACK 部分索引；不改变 `PENDING_LIMIT` 4096 语义、不改变全局授权 Gate 架构；未授权合并与部署。
 - 需求确认：已确认诊断与修复顺序。P0：点击即发独立通道、PUT 保持连接、`send()` 不阻塞目录刷新。P1：去掉每轮重复目录请求与重复目录刷新。P2：为发送事务的 outstanding 计数增加部分索引，并把计数移到最终事务的 prepare 阶段；同一账号的发送在最终事务中已先锁账号行，计数仍与提交串行，4096 上限不变。实施中依据测试回退了“`queued` 跳过预检 GET”：离线首发必须保持 `queued`（未发出、可取消），不能为省一个 RTT 把未发送消息标成 `unknown`。未决取舍：无。
@@ -68,7 +68,7 @@
 | 真机发送时延（基线 `213b8b0`） | Xiaomi 15（24129PN74C，`dada`，Android 17/API 37，序列号 `4e56f5`），基线 worktree `E:/speechful-dm-baseline`，APK `2026111911`（`HNUHOLE_DM_TEXT=1`，`org.hnuhole.hnuhole_mobile.dmtext`），隔离 fixture 就绪 12:31:52，`HOST_PORT=33439` | `flutter drive --use-existing-app` 输出 `All tests passed.`；`DM_SEND_LATENCY`：稳态 5 条 3016/3982/4029/3965/4006 ms，中位 3982 ms、均值 3799.6 ms；回复 597 ms；首条（PUT 响应丢弃）533 ms→`unknown`；证据 `D:/dm-device-verify/baseline-latency.txt`；PASS |
 | 真机发送时延（修复后） | 同上设备，`perf/dm-send-latency` 提交 `16eccb6`，APK `2026111912`（`org.hnuhole.hnuhole_mobile.dmtext`），隔离 fixture 就绪 12:33:47，`HOST_PORT=40623` | `All tests passed.`；稳态 5 条 517/450/474/433/618 ms，中位 474 ms、均值 498.4 ms；回复 519 ms；首条 428 ms→`unknown`；证据 `D:/dm-device-verify/fixed-latency.txt`；PASS |
 | 时延对比 | 同一设备、同一隔离 C/V/PostgreSQL HTTPS fixture 模式，基线/修复各 1 轮、每轮 5 条稳态样本 | 稳态中位 3982→474 ms（8.4×，-88.1%）；均值 3799.6→498.4 ms（7.6×，-86.9%）；最差 4029→618 ms（6.5×）；PASS |
-| PR CI | PR [#24](https://github.com/zewbby/SpeechFUL-Develop/pull/24)，旧 head `2f63b7e`；新 head `69044bb` 未推送 | 旧 head 26 项检查全部 success 或 skipped（含 policy、scope、compile、go-postgres、gate-postgres、flutter、mobile-recovery、reliable-chat-sql、search-postgres-100k 等）；PASS。审查修复及后续修复提交尚未 push，新 head 的 CI 为 NOT_RUN |
+| PR CI | PR [#24](https://github.com/zewbby/SpeechFUL-Develop/pull/24)，远端 head `8e0526f`；本地审查修复 `69044bb` 未推送 | 远端 head 26 项检查：25 success、1 skip、0 failure（含 policy、scope、compile、go-postgres、gate-postgres、flutter、mobile-recovery、reliable-chat-sql、search-postgres-100k 等）；PASS。本地 `78f85fa`、`4483410`、`69044bb` 及其文档提交尚未 push，新 head 的 CI 为 NOT_RUN |
 
 ## 阻碍与下一步
 
@@ -80,5 +80,5 @@
 - 测试工具新增 `integration_test/dm_latency_device_test.dart`，并在 `dm_text_device_test.dart` 增加 `dmTextOf`/`waitForDmState` 与 `DM_SEND_LATENCY` 输出；仅隔离测试包使用。
 - 复测命令（fixture 写文件后 5 分钟内完成）：`HNUHOLE_DM_TEXT=1 flutter build apk --debug --target=integration_test/dm_latency_device_test.dart --dart-define-from-file=D:/dm-device-verify/fixture.json --build-number=<n>`；`adb push` + `pm install -r`；`adb reverse tcp:58443 tcp:<HOST_PORT>`；`flutter drive --use-existing-app=<vm-service-uri> --driver=test_driver/auth_live_device_driver.dart --target=integration_test/dm_latency_device_test.dart`。
 - 轮询读是否必须持有全局 Gate：属于授权证据最终校验的安全边界，本次不调整；先通过减少每轮请求数降低争用，若仍需进一步优化，另开安全评审。
-- 已 push `develop/perf/dm-send-latency` 并创建 PR #24；旧 head `2f63b7e` 的 26 项 CI 全部 success/skipped。审查修复提交 `78f85fa`、`4483410` 与后续错误竞态修复 `69044bb`（含文档提交 `988102c`）目前只在本地，尚未推送，未触发 CI；未合并、未部署，需用户另行授权。
+- 已 push `develop/perf/dm-send-latency` 并创建 PR #24；远端 head `8e0526f` 的 26 项 CI 为 25 success、1 skip。审查修复提交 `78f85fa`、`4483410` 与后续错误竞态修复 `69044bb`（含文档提交 `988102c` 及本次记录更新）目前只在本地，尚未推送，未触发 CI；未合并、未部署，需用户另行授权。
 - 本轮“还有问题么”复查结论：PR #25 重新核对时间线排序与置顶字段后未发现新的正确性问题；PR #24 发现并修复了上述同步期间错误提示被擦除的竞态。两分支均未新增未决取舍。
