@@ -274,10 +274,7 @@ class GovernanceController extends ChangeNotifier {
     lastPendingSubmitted = null;
     busy = loading = false;
     _notify();
-    if (available) {
-      unawaited(restorePending());
-      unawaited(refreshInboxUnread());
-    }
+    if (available) unawaited(restorePending());
   }
 
   _Authority _capture() {

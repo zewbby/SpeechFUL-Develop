@@ -561,6 +561,7 @@ class _HnuholeAppState extends State<HnuholeApp>
   late final Listenable _postRouteChanges;
   bool _messagesRouteOpen = false;
   late final ValueNotifier<HhNavigationUnread> _navigationUnread;
+  int _notificationUnreadAuthority = -1;
   String? _dmInitialIdentity;
   int _dmInboxRevision = 0;
   bool _handlingDmTap = false;
@@ -647,6 +648,13 @@ class _HnuholeAppState extends State<HnuholeApp>
   }
 
   void _syncNavigationUnread() {
+    final governance = widget.governance;
+    if (governance == null || !governance.available) {
+      _notificationUnreadAuthority = -1;
+    } else if (_notificationUnreadAuthority != governance.authorityVersion) {
+      _notificationUnreadAuthority = governance.authorityVersion;
+      unawaited(governance.refreshInboxUnread());
+    }
     final conversations = widget.dm?.controller.conversations ?? const [];
     final next = (
       messages: widget.governance?.hasUnread == true,
@@ -878,7 +886,9 @@ class _HnuholeAppState extends State<HnuholeApp>
       unawaited(widget.sessions.onActivity());
       unawaited(widget.dm?.controller.sync());
       final governance = widget.governance;
-      if (governance != null) unawaited(governance.refreshInboxUnread());
+      if (governance != null && governance.available) {
+        unawaited(governance.refreshInboxUnread());
+      }
     }
   }
 
