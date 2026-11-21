@@ -8,7 +8,7 @@
 - 授权依据与边界：用户 2026-11-22 要求新建分支并完成 PR，范围为铃铛通知、私信入口未读角标，以及头像更新后个人页收藏、喜欢等子页面卡片头像自动刷新；未授权合并、部署或发布，也不改动正式数据。
 - 需求确认：铃铛通知和私信底栏入口在存在未读时显示角标；头像保存并返回个人页后，已加载的喜欢、收藏及其他身份投影子页不得继续显示旧头像。无未决取舍；采用不改变布局的主题色圆点，不新增未读数协议或改变已读语义。
 - 更新日期：2026-11-22
-- 状态：实现 已完成；验证 PASS（本地受影响范围）；合并 未合并；发布 未发布
+- 状态：实现 已完成；验证 PASS（本地受影响范围与 PR CI）；合并 未合并；发布 未发布
 
 ## 目标与范围
 
@@ -35,13 +35,13 @@
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
-| 实现 | `develop/main@3166ca9` 加本任务代码提交 `2ff5273` | 完成通知启动／回前台统计、底栏私信汇总、导航圆点及个人页身份投影失效；未改接口、迁移或已读规则。 |
+| 实现 | `develop/main@3166ca9` 加本任务代码提交 `2ff5273`、`5950c47`，测试兼容提交 `1370bba` | 完成通知启动／回前台统计、底栏私信汇总、导航圆点及个人页身份投影失效；未改接口、迁移或已读规则。 |
 | 静态检查 | Windows；Flutter 3.47.5／Dart 3.13.4；`apps/mobile` | PASS：`flutter analyze --no-pub` 无问题；Dart format 与 `git diff --check` PASS。 |
-| 聚焦回归 | 同一基线加本任务差异；Windows host tests | PASS：7 个文件 56 项。覆盖通知角标显隐、私信会话角标、导航无页面重建、48dp 触控、头像更新后喜欢／收藏重载、通知列表、导航动效和身份管理。 |
+| 聚焦回归 | 同一基线加最终产品差异；Windows host tests | PASS：核心 7 个文件 56 项，另补 `governance_test.dart` 35 项与 `post_screens_test.dart` 33 项。覆盖通知角标显隐、私信会话角标、导航无页面重建、48dp 触控、头像更新后喜欢／收藏重载、通知列表、治理请求边界、个人页替换实现、导航动效和身份管理。 |
 | 渲染检查 | 320×180 逻辑像素，真实字体，浅色／深色宿主渲染 | PASS：实际查看两张 PNG；铃铛和私信右上角 8dp 圆点位置正确，图标无挤压或遮挡。 |
-| Android 构建 | Windows 当前环境 | NOT_RUN：未安装 Android SDK，`flutter build apk --debug --no-pub --target-platform android-arm64` 在环境检查阶段停止；不代表代码编译失败。 |
-| 远端 CI | PR #27 head | NOT_RUN：PR 已创建，等待当前 head 的适用产品 CI。 |
+| Android 构建 | PR CI（Ubuntu 24.04／Flutter 3.47.5） | PASS：`flutter-and-android` 与 Android prerelease candidate 检查通过并实际构建 Android。Windows 本机因未安装 Android SDK，本地 APK 构建 NOT_RUN。 |
+| 远端 CI | PR #27 head `5950c47` | PASS：25 项检查，24 success、1 按设计 skip、0 failure；PR `mergeable=true`，状态 `clean`。 |
 
 ## 阻碍与下一步
 
-本地实现、静态检查、56 项聚焦回归和 PR 创建已完成。公开仓库推送权限不足，因此正式 PR 使用 `develop` 研发远端；后续以 PR #27 当前 head 的 Flutter／产品 CI 为准，Android 构建和真机显示仍需具备 SDK／设备的环境补验。合并与发布未获授权。
+本地实现、静态检查、聚焦回归、渲染检查与 PR CI 已完成。公开仓库推送权限不足，因此正式 PR 使用 `develop` 研发远端；PR #27 当前 head 的产品 CI 已全绿。真机浅深色、系统大字和实际未读消息链路仍需实体设备补验；合并与发布未获授权。
