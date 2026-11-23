@@ -164,23 +164,16 @@ void main() {
       );
       await tester.pumpAndSettle();
       await _open(tester, 'support');
+      final entry = find.byKey(const ValueKey('settings-support-code-entry'));
+      expect(find.byKey(const ValueKey('settings-support-code')), findsNothing);
+      await tester.ensureVisible(entry);
+      await tester.pumpAndSettle();
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
       final code = find.byKey(const ValueKey('settings-support-code'));
-      await tester.ensureVisible(code);
-      await tester.pumpAndSettle();
-      await tester.tap(code);
-      await tester.pumpAndSettle();
-      expect(find.byType(InteractiveViewer), findsOneWidget);
+      expect(code, findsOneWidget);
       expect(
-        (tester
-                    .widget<Image>(
-                      find.descendant(
-                        of: find.byType(InteractiveViewer),
-                        matching: find.byType(Image),
-                      ),
-                    )
-                    .image
-                as AssetImage)
-            .assetName,
+        (tester.widget<Image>(code).image as AssetImage).assetName,
         'assets/support/alipay-receive.jpg',
       );
       await tester.binding.handlePopRoute();
@@ -334,20 +327,20 @@ void main() {
         find.byKey(const ValueKey('settings-support-page')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const ValueKey('settings-support-code')),
-        findsOneWidget,
+      expect(find.byKey(const ValueKey('settings-support-code')), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('settings-support-code-entry')),
       );
+      await tester.pumpAndSettle();
       final image = tester.widget<Image>(
-        find.descendant(
-          of: find.byKey(const ValueKey('settings-support-code')),
-          matching: find.byType(Image),
-        ),
+        find.byKey(const ValueKey('settings-support-code')),
       );
       expect(
         (image.image as AssetImage).assetName,
         'assets/support/alipay-receive.jpg',
       );
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
       for (final language in AppLanguage.values) {
         c.setLanguage(language);
         await tester.pumpAndSettle();
@@ -392,15 +385,20 @@ void main() {
     expect(
       find.descendant(
         of: codeCard,
-        matching: find.byKey(const ValueKey('settings-support-code')),
+        matching: find.byKey(const ValueKey('settings-support-code-entry')),
       ),
       findsOneWidget,
     );
+    expect(find.byKey(const ValueKey('settings-support-code')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('settings-support-code-entry')));
+    await tester.pumpAndSettle();
     // 收款码受限最大宽度，宽屏上不被无限放大。
     expect(
       tester.getSize(find.byKey(const ValueKey('settings-support-code'))).width,
       lessThanOrEqualTo(300),
     );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
     final save = find.byKey(const ValueKey('settings-support-save'));
     await tester.scrollUntilVisible(
       save,
@@ -548,10 +546,25 @@ void main() {
           findsOneWidget,
         );
         expect(
+          find.byKey(const ValueKey('settings-support-code')),
+          findsNothing,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('settings-support-code-entry')),
+        );
+        await tester.pumpAndSettle();
+        expect(
           tester
               .getSize(find.byKey(const ValueKey('settings-support-code')))
               .width,
           lessThanOrEqualTo(300),
+          reason: '${size.width}x${size.height} @ $scale',
+        );
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(
+          tester.takeException(),
+          isNull,
           reason: '${size.width}x${size.height} @ $scale',
         );
         final save = find.byKey(const ValueKey('settings-support-save'));

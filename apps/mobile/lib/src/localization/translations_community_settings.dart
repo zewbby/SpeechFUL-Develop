@@ -608,6 +608,7 @@ const communitySettingsTranslations = <String, (String, String, String)>{
     'コピーできませんでした。再試行してください。',
   ),
   '支付宝收款码': ('支付寶收款碼', 'Alipay payment code', 'Alipayの支払いコード'),
+  '点击查看收款码': ('點擊查看收款碼', 'View payment code', '支払いコードを見る'),
   '您的支持将全数用于开发与维护SpeechFUL项目': (
     '您的支持將全數用於開發與維護SpeechFUL專案',
     'Your support will be used entirely for the development and maintenance of the SpeechFUL project.',
