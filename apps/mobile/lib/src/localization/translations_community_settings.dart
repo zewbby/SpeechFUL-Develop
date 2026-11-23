@@ -591,6 +591,11 @@ const communitySettingsTranslations = <String, (String, String, String)>{
   '账号注销': ('帳號註銷', 'Close account', 'アカウント削除'),
   '意见反馈': ('意見回饋', 'Feedback', 'ご意見'),
   '支持我们': ('支持我們', 'Support us', '支援する'),
+  '感谢你支持 SpeechFUL': (
+    '感謝你支持 SpeechFUL',
+    'Thank you for supporting SpeechFUL',
+    'SpeechFULを応援していただきありがとうございます',
+  ),
   '身份管理': ('身分管理', 'Manage identities', '名前の管理'),
   '账号与安全': ('帳號與安全', 'Account and security', 'アカウントとセキュリティ'),
   '联系方式': ('聯絡方式', 'Contact us', 'お問い合わせ'),
