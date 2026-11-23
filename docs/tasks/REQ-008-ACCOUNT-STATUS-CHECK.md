@@ -7,8 +7,8 @@
 - 本轮规则版本（指挥模式）：不适用
 - 授权依据与边界：用户 2026-11-23 提供《SpeechFUL-社区账号状态检查优化实施方案-20261123.md》并指令“阅读并完成”。仅执行方案中已确认的评论事务 SQL 去重；阶段二、三按方案自带启动条件以证据判断，不满足即记录理由并关闭。未授权 push、PR、合并或部署；不修改 HTTP、OpenAPI、数据库 schema、移动端或 Redis。
 - 需求确认：方案已给出三个阶段的边界、30 秒参数和“可只交付有实证收益阶段”的规则；阶段二、三的启动条件是可核实事实，按方案执行，不产生新的业务取舍。未决取舍：无。
-- 更新日期：2026-11-23
-- 状态：实现 完成（阶段一；阶段二、三按条件关闭）；验证 PASS（阶段一）、SKIP（阶段二、三按条件不实施）；合并 未合并；发布 未发布
+- 更新日期：2026-11-24
+- 状态：实现 完成（阶段一；阶段二、三按条件关闭）；验证 PASS（阶段一自动化 + Xiaomi 15 真机评论链路）、SKIP（阶段二、三按条件不实施）；合并 未合并；发布 未发布
 
 ## 目标与范围
 
@@ -39,9 +39,11 @@
 - 可重试任务详情不再执行同一条 SELECT；禁言中、目标删除后、已发布任务仍不返回 `RETRY`，禁言到期后仍返回 `RETRY`。— PASS
 - 删除、点赞、放弃、此前已返回回执的重放保持原行为；外层锁、锁顺序、C Safety Gate、会话代次和既有续期路径不变。— PASS（放弃与重放由既有测试覆盖；点赞/删除的专用业务测试因缺少真实图片校验器 SKIP，代码路径未改动）
 - 隔离 PostgreSQL 测试通过；全量 Go 测试、vet、build 和改动文件 gofmt 通过。— PASS
+- 真机评论链路：用任务分支构建的服务端和 arm64 debug APK，在同一账号下创建评论，重新登录后评论仍可见。— PASS（Xiaomi 15）
+- 真机失败任务重试 UI（禁言到期、目标删除）未被界面路径触发；同一分支由隔离 Go 测试覆盖。— SKIP
 - 阶段二：若存在同一提示的重复取数，才实施客户端 30 秒合并；否则记录轨迹并关闭。— SKIP（无该提示接口）
 - 阶段三：若能指出 Redis 命中替代的具体 PostgreSQL 读取，才实施；否则关闭。— SKIP（无可替代读取）
-- 产品级 P50/P95、真机链路与 30 秒缓存行为。— NOT_RUN（阶段二未实施，无缓存行为可测）
+- 产品级 P50/P95、真实规模数据与 30 秒缓存行为。— NOT_RUN（阶段二未实施，无缓存行为；本轮只做功能真机烟测）
 
 ## 当前进度与证据
 
@@ -54,9 +56,12 @@
 | 完整评论区 CI 模式 | 同一隔离 fixture；runner 默认 pattern | PASS：`TestCommentTextTransactionsPostgres`、`TestCommentTextFailureRetryAbandonPostgres`、`TestCommentTextFrozenGatePostgres`、`TestCommentTextRuntimeAndSQLGuardsPostgres`、`TestCommentTextUnavailablePostPostgres`、`TestCommentTextClosureCleanupWithFeatureDisabledPostgres`、迁移链、帖子 schema 与 moderation 升级均 PASS；`TestCommentTextHTTPSPostgres` 的 original/prepared 均 PASS；`TestCommentBusinessMediaDeleteLikesNoticesPostgres` 与 `TestCommentBusinessHTTPSPostgres` 因“dedicated real validator not configured” SKIP |
 | 全量 Go | 同一 WSL2；`go test -mod=readonly -count=1 ./...` | PASS：所有包通过；无 DSN 的集成测试按既有逻辑 skip |
 | 静态检查 | 同一 WSL2；`go vet -mod=readonly ./...`、`go build -mod=readonly ./...`、改动文件 LF 副本 `gofmt` | PASS：vet 无输出、build 成功、两个改动文件 gofmt 无差异 |
+| 真机评论创建与持久化 | Xiaomi 15（`24129PN74C`）/ Android 17 / API 37 / arm64-v8a；服务端由任务分支 `961a5ab`（含 `de6303c`）构建，binary SHA-256 `b5798808…`；一次性开发 C/V 服务与一次性开发库；debug APK `1.2.0 (2026111701)`，2026-11-24 04:13 安装；账号 `synthetic_viewer`（身份“南风”） | PASS：在帖子 `82079d7c-f3bb-4061-af4b-9f45de1415a6` 发布评论 `device-smoke-20261124`；界面“评论”计数 0→1，正文与作者显示；开发库 `c_comments.attempts` 版本 1 为 `PUBLISHED`，`accepted_at 04:15:58`、`terminal_at 04:15:59`；重新登录后该帖仍为 1 条评论且正文可见。截图 `device-comment-{07,10,16}-*.png` 留存于本地未提交 `.zcode/` |
+| 真机任务详情读取 | 同一服务端与账号；`GET /api/v1/me/comment-tasks/907a5f5d-3730-47ef-849e-f825ac01ba67` | PASS：HTTP 200，`state=PUBLISHED`，`allowedActions=[]`，没有触发账号状态重复读取或回执变化 |
+| 开发环境修复 | 本机 WSL2 一次性开发库 | 启动任务分支服务前，开发库停在 0054 之前且运行时缺 0053 新增的 `password_login_limits` 权限；已前滚 0054 并重跑 `grant-*`（本地开发环境修复，不是产品 schema 或仓库迁移改动）。首次启动的 `authentication process failure` 由此产生，修复后 C/V `health/ready` 均为 ready |
 | 阶段二判定 | 基线移动端源码 | SKIP：无可复用的全局“账号是否受限”提示接口，详见下表 |
 | 阶段三判定 | 基线服务端源码 | SKIP：无“Redis 命中替代某条 PostgreSQL 读取”的候选，详见下文 |
-| 产品级延迟 | 真实规模数据与真机 | NOT_RUN |
+| 产品级延迟 | 真实规模数据 | NOT_RUN（真机只做功能烟测，未采集 P50/P95） |
 
 ### 阶段二：移动端一次浏览/提交的提示请求轨迹
 
@@ -86,5 +91,8 @@
 - 实现与验证已在本地完成，未 push、未创建 PR、未合并、未部署；后续动作需新授权。
 - `TestCommentBusinessMediaDeleteLikesNoticesPostgres` 因未配置真实图片校验器 SKIP，点赞/删除的专用正向覆盖未在本轮执行；相关代码路径未改动。
 - `applyCommentMutation` 仍保留同类账号状态读取。它不在方案限定的两个最小改动点内，且拒绝码与执行分支不同；若后续要覆盖点赞/删除，需单独确认并补充行为对照。
-- 产品级 P50/P95 与真机验证 NOT_RUN；本轮可核实的收益是脚本流程内 3 次重复 SELECT 降为 0。
+- 真机评论创建、评论持久化和评论任务详情读取已 PASS。用户最初点名小米 8，实际接入的是 Xiaomi 15（`24129PN74C`），经用户确认按该设备继续；本记录不把它外推为小米 8 或其他机型结果。
+- 真机未通过界面触发失败任务重试分支（需要可控的禁言到期或目标删除时序）；该分支仍以隔离 Go 测试为证据。
+- 真机测试期间另一次命令行登录替换了 App 会话，App 按既有单会话机制进入“请重新核对登录状态”，重新登录后恢复；不是本次评论改动的回归。
+- 产品级 P50/P95 仍 NOT_RUN；本轮可核实的收益是脚本流程内 3 次重复 SELECT 降为 0。
 - 阶段二、三仅在出现可复用的账号提示接口或可明确归因的重复读取时重新评估。
