@@ -775,7 +775,11 @@ void main() {
         f.api.calls.where((s) => s == 'feed:recommended:first:20'),
         hasLength(2),
       );
-      await tester.tap(find.text('加载更多'));
+      expect(find.text('加载更多'), findsNothing);
+      await f.controller.homeFeed.loadTimeline(
+        channelId: f.controller.homeFeed.timelineChannelId,
+        more: true,
+      );
       await tester.pumpAndSettle();
       expect(
         f.api.calls.lastWhere((s) => s.startsWith('feed:')),
@@ -808,7 +812,11 @@ void main() {
         newestId,
         postId,
       ]);
-      await tester.tap(find.text('加载更多'));
+      expect(find.text('加载更多'), findsNothing);
+      await f.controller.homeFeed.loadTimeline(
+        channelId: f.controller.homeFeed.timelineChannelId,
+        more: true,
+      );
       await tester.pumpAndSettle();
       expect(f.controller.timelineItems.map((p) => p.postId), [
         newestId,

@@ -448,6 +448,7 @@ const communitySettingsTranslations = <String, (String, String, String)>{
   ),
   '没有更多回复': ('沒有更多回覆', 'No more replies', 'これ以上の返信はありません'),
   '没有更多评论': ('沒有更多評論', 'No more comments', 'これ以上のコメントはありません'),
+  '已经到底': ('已經到底', 'You have reached the end', '最後まで表示しました'),
   '浏览量暂不可用': ('瀏覽量暫時無法使用', 'Views unavailable', '閲覧数は現在利用できません'),
   '浏览量，{v0}': ('瀏覽量，{v0}', 'Views, {v0}', '閲覧数、{v0}'),
   '消息': ('訊息', 'Notifications', '通知'),
