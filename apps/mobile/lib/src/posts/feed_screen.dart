@@ -77,7 +77,6 @@ class _FeedScreenState extends State<FeedScreen> {
   bool _moreArmed = true;
   bool _moreInFlight = false;
   bool _moreFailed = false;
-  bool _reachedEnd = false;
   bool _viewportFillScheduled = false;
   String? _viewportFillCursor;
   int _viewportFillRuns = 0;
@@ -195,12 +194,8 @@ class _FeedScreenState extends State<FeedScreen> {
     final sameGeneration = generation == feed.timelineGeneration;
     setState(() {
       if (sameChannel) _moreInFlight = false;
-      if (sameChannel && sameGeneration) {
-        if (feed.timelineError != null) {
-          _moreFailed = true;
-        } else if (feed.timelineCursor == null) {
-          _reachedEnd = true;
-        }
+      if (sameChannel && sameGeneration && feed.timelineError != null) {
+        _moreFailed = true;
       }
     });
     // A cursor-invalid recovery reloads the first page; its own generation
@@ -219,17 +214,24 @@ class _FeedScreenState extends State<FeedScreen> {
     unawaited(_requestMore(retry: true));
   }
 
-  /// 首屏不足一屏时没有滚动机会，布局完成后补一次检查。
+  /// 首屏不足一屏、或追加内容后仍停在触底阈值内时没有新的滚动机会，
+  /// 布局完成后补一次检查。
   void _scheduleViewportFill() {
     if (_viewportFillScheduled) return;
     _viewportFillScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _viewportFillScheduled = false;
       if (!mounted || !_canRequestMore()) return;
-      if (!_scroll.hasClients || _scroll.position.maxScrollExtent > 0) return;
+      if (!_scroll.hasClients) return;
+      final position = _scroll.position;
+      // 有足够可滚动余量时交给正常的滚动触发，避免首屏就提前请求下一页。
+      if (position.maxScrollExtent > 0 &&
+          position.extentAfter >= _moreThreshold) {
+        return;
+      }
       final cursor = feed.timelineCursor;
       // 同一个 cursor 只补载一次；否则服务端返回不足一屏且 cursor 不变的
-      // 异常页会让首屏补载在每次通知后无限重试。
+      // 异常页会让补载在每次通知后无限重试。
       if (cursor == null || cursor == _viewportFillCursor) return;
       if (_viewportFillRuns >= 5) return;
       _viewportFillCursor = cursor;
@@ -242,7 +244,6 @@ class _FeedScreenState extends State<FeedScreen> {
   void _resetPagination() {
     _moreArmed = true;
     _moreFailed = false;
-    _reachedEnd = false;
     _viewportFillCursor = null;
     _viewportFillRuns = 0;
   }
@@ -504,8 +505,9 @@ class _FeedScreenState extends State<FeedScreen> {
         ),
       );
     }
-    if (_reachedEnd &&
-        !feed.timelineLoading &&
+    // `timelineCursor == null` is the controller's end-of-feed contract; it
+    // also covers the first page already being the last page.
+    if (!feed.timelineLoading &&
         !feed.preferencesSaving &&
         feed.timelineCursor == null &&
         feed.timelineError == null) {

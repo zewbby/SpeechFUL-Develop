@@ -13,11 +13,7 @@ import '../design_system/motion.dart';
 const _minFeedRatio = .5;
 const _maxFeedRatio = 3.0;
 
-/// 单图完整展示的常见竖图比例（3:4）；最大高度至少容纳它，避免常见
-/// 手机竖拍照片在宽屏上仅因几像素超出而被裁切。
-const _normalPortraitFeedRatio = .75;
-
-/// 单图预览的最大高度；超过上限的极端竖图居中裁切并提示查看完整图片。
+/// 极端竖图（窄于 1:2）的最大高度；比例范围内的竖图不受此限制。
 const _maxFeedSingleHeight = 480.0;
 
 /// The host authorizes both providers and the complete original resolver.
@@ -642,25 +638,23 @@ class _PostImagesSectionState extends State<PostImagesSection>
       );
       if (sizes.length == 1) {
         final r = ratio(sizes.first);
-        // 单图：正常比例严格按原宽高比、宽度铺满，不裁切也不留边；只有
-        // 超出比例或最大高度上限的极端图才居中裁切并提示查看完整图片。
+        // 单图：0.5–3.0 范围内严格按原宽高比、宽度铺满，不裁切；只有超出
+        // 范围的极端长图/宽图才限幅，极端竖图同时限制最大高度。
+        final extreme = r < _minFeedRatio || r > _maxFeedRatio;
         final displayRatio = r.clamp(_minFeedRatio, _maxFeedRatio).toDouble();
         final inner = width - inset * 2;
-        final normalHeight = inner / _normalPortraitFeedRatio;
-        final maxHeight = normalHeight > _maxFeedSingleHeight
-            ? normalHeight
-            : _maxFeedSingleHeight;
-        final natural = inner / displayRatio;
-        final cropped =
-            r < _minFeedRatio || r > _maxFeedRatio || natural > maxHeight;
+        var height = inner / displayRatio;
+        if (r < _minFeedRatio && height > _maxFeedSingleHeight) {
+          height = _maxFeedSingleHeight;
+        }
         return Padding(
           padding: EdgeInsets.fromLTRB(inset, 2, inset, 0),
           child: card(
             0,
             inner,
-            natural > maxHeight ? maxHeight : natural,
-            previewCropped: cropped,
-            showFullHint: cropped,
+            height,
+            previewCropped: extreme,
+            showFullHint: extreme,
           ),
         );
       }

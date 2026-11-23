@@ -230,6 +230,7 @@ void main() {
       for (final size in [
         const Size(1600, 900),
         const Size(900, 1200),
+        const Size(900, 1600),
         const Size(900, 900),
       ]) {
         await tester.pumpWidget(
@@ -248,7 +249,7 @@ void main() {
         await tester.pumpWidget(const SizedBox());
       }
       for (final (size, height) in [
-        // 超高图：高度封顶 480，只有此时才裁切并提示查看完整图片。
+        // 超出 1:2 的极端竖图：限幅后高度封顶 480，裁切并提示查看完整图片。
         (const Size(100, 3000), 480.0),
         // 超宽图：宽高比限幅到 3:1，高度由限幅比例决定，同样裁切并提示。
         (const Size(3000, 100), 317 / 3),

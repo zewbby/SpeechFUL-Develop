@@ -299,10 +299,15 @@ void main() {
         );
         expect(find.text('点击查看完整图片'), findsNothing);
       }
-      // 宽屏上的常见 3:4 竖图仍完整展示：最大高度随之容纳它而非强行裁切。
+      // 宽屏上的常见 3:4 竖图完整展示，不裁切。
       await show(const Size(900, 1200), width: 362);
       final portrait = find.byKey(const ValueKey(('feed-image', 'ratio')));
       expect(tester.getSize(portrait).height, closeTo(362 / .75, .1));
+      expect(find.text('点击查看完整图片'), findsNothing);
+      // 9:16 仍在 0.5–3.0 范围内：完整展示，不被最大高度裁切。
+      await show(const Size(900, 1600));
+      final phonePortrait = find.byKey(const ValueKey(('feed-image', 'ratio')));
+      expect(tester.getSize(phonePortrait).height, closeTo(320 / (9 / 16), .1));
       expect(find.text('点击查看完整图片'), findsNothing);
       await show(const Size(480, 2400));
       final tall = find.byKey(const ValueKey(('feed-image', 'ratio')));

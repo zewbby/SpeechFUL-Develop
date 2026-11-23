@@ -54,6 +54,26 @@ FeedWindow _page(
   refreshCursor: refresh,
   insertAfter: after == null ? null : _id(after),
 );
+
+/// Minimal-height posts: used to exercise a short appended page while the
+/// viewport is still scrollable.
+FeedWindow _shortPage(Iterable<int> ids, {String? older}) => FeedWindow(
+  items: [
+    for (final n in ids)
+      FeedPost(
+        postId: _id(n),
+        channelId: feed.channelId,
+        title: '',
+        body: '',
+        author: feed.author,
+        publishedAt: feed.at,
+        viewCount: 1,
+      ),
+  ],
+  nextCursor: older,
+  refreshCursor: null,
+  insertAfter: null,
+);
 FeedController _controller(_Api api) => FeedController(
   api: api,
   available: () => true,
@@ -160,6 +180,58 @@ void main() {
     api.pending = null;
     await tester.pumpAndSettle();
     expect(find.text('正在加载'), findsNothing);
+    expect(find.text('已经到底'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a single-page timeline reports the end on first load', (
+    tester,
+  ) async {
+    final api = _Api()..pages.add(_page([10, 9, 8, 7, 6, 5, 4, 3, 2, 1]));
+    final fixture = feed.FeedFixture(await IdentityTestFixture.create(), api);
+    addTearDown(fixture.dispose);
+    await tester.pumpWidget(feed.screen(fixture));
+    await tester.pumpAndSettle();
+    // The first page is already the last page; no older request is needed.
+    expect(api.requests.length, 1);
+    expect(fixture.controller.homeFeed.timelineCursor, isNull);
+    await tester.drag(
+      find.byKey(const ValueKey('production-feed')),
+      const Offset(0, -20000),
+    );
+    await tester.pumpAndSettle();
+    expect(api.requests.length, 1);
+    expect(find.text('已经到底'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a short older page keeps loading without another drag', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 500));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _Api()
+      ..pages.addAll([
+        _shortPage([10, 9, 8, 7, 6, 5, 4, 3, 2, 1], older: 'older-1'),
+        _shortPage([11], older: 'older-2'),
+        _shortPage([12]),
+      ]);
+    final fixture = feed.FeedFixture(await IdentityTestFixture.create(), api);
+    addTearDown(fixture.dispose);
+    await tester.pumpWidget(feed.screen(fixture));
+    await tester.pumpAndSettle();
+    expect(api.requests.length, 1);
+
+    final list = find.byKey(const ValueKey('production-feed'));
+    await tester.drag(list, const Offset(0, -20000));
+    await tester.pumpAndSettle();
+    // 第二页只有一条短内容；追加后仍在触底阈值内，应自动继续下一页。
+    expect(api.requests.length, 3);
+    expect(api.requests.map((r) => r.older).whereType<String>(), [
+      'older-1',
+      'older-2',
+    ]);
+    expect(fixture.controller.homeFeed.timelineCursor, isNull);
     expect(find.text('已经到底'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
