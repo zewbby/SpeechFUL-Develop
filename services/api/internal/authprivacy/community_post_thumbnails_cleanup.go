@@ -135,7 +135,15 @@ func (c *Community) RunPostThumbnailMaintenance(ctx context.Context) {
 					cache := c.postImages.thumbnails
 					slog.Info("private thumbnail reuse", "hits", s.Hits, "misses", s.Misses, "source_reads", s.SourceReads,
 						"source_bytes", s.SourceBytes, "transforms", s.Transforms, "shared", s.SharedWaiters,
+						"payload_reads", s.PayloadReads, "payload_bytes", s.PayloadBytes,
 						"queued", len(cache.queue), "workers", len(cache.workers), "capacity_skips", s.CapacitySkips)
+				}
+				// Completed receipts expire quickly. Pending events survive while
+				// Redis is active; only a disabled cache abandons stale ones.
+				if n, e := c.retireThumbnailCacheEvents(step, c.postImages.thumbnails.redis != nil, 128); e != nil {
+					slog.Warn("thumbnail cache outbox maintenance failed")
+				} else if n > 0 {
+					slog.Info("thumbnail cache outbox retired", "events", n)
 				}
 			}
 			cancel()
