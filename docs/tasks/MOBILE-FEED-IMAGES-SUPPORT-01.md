@@ -3,12 +3,12 @@
 - 模式：常规（用户要求多智能体并行实施，未调用 `$orchestrator`；未进入指挥模式）
 - 负责人／状态维护人：当前 Session
 - 执行 Session（指挥模式）：不适用；三个执行智能体分别使用独立 Worktree 与分支
-- 分支／Worktree／PR：集成分支 `feat/mobile-feed-images-support`（`E:/speechful-mobile-ui`，基线 `3166ca9`）；执行分支见下表；未创建 PR
+- 分支／Worktree／PR：集成分支 `feat/mobile-feed-images-support`（`E:/speechful-mobile-ui`，基线 `3166ca9`），远端 `develop/feat/mobile-feed-images-support@d981e71`；PR [#29](https://github.com/zewbby/SpeechFUL-Develop/pull/29)；执行分支见下表
 - 本轮规则版本（指挥模式）：不适用
-- 授权依据与边界：用户 2026-11-23 指令「现在有这样几个需求……」及「同时做，你调用不同智能体」。仅授权本地实现、测试与本地提交；未授权 push、PR、合并到 `develop/main` 或发布。
+- 授权依据与边界：用户 2026-11-23 指令「现在有这样几个需求……」及「同时做，你调用不同智能体」。交付汇总后用户指令「开工」，按下一步执行推送分支并创建 PR；合并到 `develop/main` 与发布仍未授权。
 - 需求确认：用户未逐项回答四个取舍，随后明确要求并行实施。本轮按主 Session 已给出的推荐默认执行：①距底约 320 逻辑像素自动加载并显示底部状态；②单图按原比例、多图保持九宫格；③查看器首帧完整原比例；④支持页卡片化分区。**待用户试用后复核**。另：用户新要求「按原始比例渲染」改变了图片查看器既有已确认行为（设计文档 Q1：长图适宽、从顶部进入），本轮改为完整适屏（contain）居中打开，属需用户确认的覆盖。
 - 更新日期：2026-11-23
-- 状态：实现 已完成；验证 PASS；合并 未合并；发布 未发布
+- 状态：实现 已完成；验证 PASS；PR [#29](https://github.com/zewbby/SpeechFUL-Develop/pull/29) 已创建，CI 进行中；合并 未合并；发布 未发布
 
 ## 目标与范围
 
@@ -42,6 +42,7 @@
 | 集成 | `322071d`（feat/mobile-feed-images-support） | 三分支无冲突合并；`flutter analyze` PASS |
 | 全量移动端测试 | Flutter 3.47.5 / Dart 3.13.4，Windows 10.0.26200；`apps/mobile` | `flutter test --no-pub` → **1392 passed / 4 skipped**，PASS |
 | 查看器包测试 | 同上；`packages/image_viewer` | `flutter test --no-pub` → **149 passed**，PASS |
+| 推送与 PR | `d981e71`；`develop/feat/mobile-feed-images-support` | 已推送；PR [#29](https://github.com/zewbby/SpeechFUL-Develop/pull/29) 已创建，20 项检查启动（1 项按设计跳过），结果待 CI 结算 |
 | 真机/人工视觉验收 | 未执行 | **NOT_RUN**：需用户在实际设备确认触底手感、卡片裁切观感、查看器首帧与支持页视觉 |
 
 ## 阻碍与下一步
@@ -49,4 +50,4 @@
 - 真实设备视觉与手感（首页自动加载触发点、极端比例卡片、查看器长图首帧、支持页明暗主题）尚未验收，需用户试用确认。
 - 用户未逐项确认四项产品取舍；若与预期不符，可按项调整：加载提前量/失败按钮、单图比例上限、查看器长图初始位置、支持页视觉方向。
 - 查看器长图初始行为覆盖了 2026-10-08 已确认的 Q1（适宽、顶部进入）；若仍需沿用旧行为，需只回退 `viewer_surface.dart`/`viewer_preview.dart` 的基准改动。
-- push、PR、合并与发布未获授权，保持未执行。
+- 分支已推送并创建 PR [#29](https://github.com/zewbby/SpeechFUL-Develop/pull/29)；合并与发布未获授权，保持未执行。
