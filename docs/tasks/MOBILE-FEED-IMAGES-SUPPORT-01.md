@@ -8,7 +8,7 @@
 - 授权依据与边界：用户 2026-11-23 指令「现在有这样几个需求……」及「同时做，你调用不同智能体」。交付汇总后用户指令「开工」，按下一步执行推送分支并创建 PR；随后用户反馈「有没有不直接放二维码的方式」，按推荐方案改为入口卡片与底部弹层。合并到 `develop/main` 与发布仍未授权。
 - 需求确认：用户未逐项回答四个取舍，随后明确要求并行实施。本轮按主 Session 已给出的推荐默认执行：①距底约 320 逻辑像素自动加载并显示底部状态；②单图按原比例、多图保持九宫格；③查看器首帧完整原比例；④支持页卡片化分区。用户进一步要求收款码不直接展示，选项未获答复，按推荐方案改为「入口卡片 + 底部弹层」，保留保存按钮。**以上待用户试用后复核**。另：用户新要求「按原始比例渲染」改变了图片查看器既有已确认行为（设计文档 Q1：长图适宽、从顶部进入），本轮改为完整适屏（contain）居中打开，属需用户确认的覆盖。
 - 更新日期：2026-11-23
-- 状态：实现 已完成；验证 PASS；PR [#29](https://github.com/zewbby/SpeechFUL-Develop/pull/29) 已创建，补充提交 `51195b6` 与复查修复 `cccb5c6` 已推送，CI 结果见 PR；合并 未合并；发布 未发布
+- 状态：实现 已完成；验证 PASS；PR [#29](https://github.com/zewbby/SpeechFUL-Develop/pull/29) 已创建，补充提交 `51195b6` 与复查修复 `cccb5c6` 已推送，CI **22 success / 1 skip**；合并 未合并；发布 未发布
 
 ## 目标与范围
 
@@ -45,7 +45,7 @@
 | 全量移动端测试 | Flutter 3.47.5 / Dart 3.13.4，Windows 10.0.26200；`apps/mobile`（含 `cccb5c6`） | `flutter test --no-pub --concurrency=2` → **1394 passed / 4 skipped**，PASS |
 | 查看器包测试 | 同上；`packages/image_viewer` | `flutter test --no-pub` → **149 passed**，PASS |
 | 推送与 PR | `d981e71`、`aac6e7d`、`4cf9684`、`51195b6`；`develop/feat/mobile-feed-images-support` | 已推送；PR [#29](https://github.com/zewbby/SpeechFUL-Develop/pull/29) 已创建 |
-| PR CI | `cccb5c6` | 待推送后 CI 结果更新；前一 head 22 项检查 21 success、1 skip，PASS；`actual-process-acceptance` 为 `workflow_dispatch` 专用，skip 属预期 |
+| PR CI | `eb0b976`（代码 `cccb5c6` + 任务记录） | 23 项检查 **22 success、1 skip**，PASS；`actual-process-acceptance` 为 `workflow_dispatch` 专用，skip 属预期。首轮 `iOS build/compile` 因 macOS runner 排队 15 分钟未分配被取消（未执行任何步骤），重跑后 success |
 | 真机/人工视觉验收 | 未执行 | **NOT_RUN**：需用户在实际设备确认触底手感、卡片裁切观感、查看器首帧与支持页视觉 |
 
 ## 阻碍与下一步
