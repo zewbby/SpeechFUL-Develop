@@ -153,6 +153,11 @@ func TestNewRejectsUnsafeConfiguration(t *testing.T) {
 	if _, err := New(cfg, "secret"); err == nil {
 		t.Fatal("empty environment namespace accepted")
 	}
+	badQueue := testConfig()
+	badQueue.FillQueueEntries = -1
+	if _, err := New(badQueue, "secret"); err == nil {
+		t.Fatal("negative fill queue accepted")
+	}
 	c, err := New(testConfig(), "secret")
 	if err != nil {
 		t.Fatal(err)
@@ -394,6 +399,47 @@ func TestDeleteAndCheck(t *testing.T) {
 	broken := newTestCache(t, testConfig(), failing)
 	if err := broken.Delete(context.Background(), key); err == nil || broken.Stats().DeleteErrors != 1 {
 		t.Fatal("delete error not reported", broken.Stats())
+	}
+}
+
+func TestCheckProvesWriteExpiryAndUnlink(t *testing.T) {
+	ok := func(args []interface{}) (interface{}, error) {
+		switch args[0] {
+		case "SET":
+			return "OK", nil
+		case "GETRANGE":
+			return "1", nil
+		case "PING":
+			return "PONG", nil
+		case "UNLINK":
+			return int64(1), nil
+		default:
+			return nil, errors.New("unexpected command")
+		}
+	}
+	client := &fakeDoer{respond: ok}
+	c := newTestCache(t, testConfig(), client)
+	if err := c.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	setCall := client.call(0)
+	if len(setCall) != 6 || setCall[0] != "SET" || setCall[3] != "NX" || setCall[4] != "PXAT" {
+		t.Fatal("check did not probe the fill command", setCall)
+	}
+	if got := client.call(client.count() - 1); got[0] != "UNLINK" {
+		t.Fatal("check did not clean up the probe", got)
+	}
+
+	// An ACL with +set but without +unlink must fail startup instead of
+	// silently retaining erased keys until their TTL.
+	denied := &fakeDoer{respond: func(args []interface{}) (interface{}, error) {
+		if args[0] == "UNLINK" {
+			return nil, errors.New("NOPERM no permissions to access a key")
+		}
+		return ok(args)
+	}}
+	if err := newTestCache(t, testConfig(), denied).Check(context.Background()); err == nil {
+		t.Fatal("missing unlink permission accepted")
 	}
 }
 

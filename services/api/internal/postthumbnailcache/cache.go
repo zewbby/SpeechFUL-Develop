@@ -83,11 +83,11 @@ type redisDoer interface {
 // they never enter JSON or logs.
 func New(config Config, password string) (*Cache, error) {
 	config = config.Effective()
-	if password == "" || config.Namespace == "" || config.Username == "" || config.Address == "" {
+	if password == "" || !hasNamespacePrefix(config.Namespace) {
 		return nil, errConfig
 	}
-	if !hasNamespacePrefix(config.Namespace) {
-		return nil, errConfig
+	if err := config.validateRuntime(); err != nil {
+		return nil, err
 	}
 	deadline := time.Duration(config.DeadlineMilliseconds) * time.Millisecond
 	client := redis.NewClient(&redis.Options{
@@ -258,8 +258,9 @@ func (c *Cache) Delete(ctx context.Context, key string) error {
 }
 
 // Check performs a bounded write/read/unlink probe. It proves the address,
-// credentials and the exact command ACL before the runtime starts serving.
-func (c *Cache) Check(ctx context.Context) error {
+// credentials, absolute-expiry write syntax and the exact command ACL before
+// the runtime starts serving.
+func (c *Cache) Check(ctx context.Context) (retErr error) {
 	if c == nil || c.client == nil {
 		return errClosed
 	}
@@ -270,10 +271,19 @@ func (c *Cache) Check(ctx context.Context) error {
 	probe := c.config.Namespace + "probe:" + hex.EncodeToString(buf)
 	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	if err := c.client.Do(checkCtx, "SET", probe, "1", "PX", 5000).Err(); err != nil {
+	// PXAT is the expiry form used by fills. Probing it here fails closed on a
+	// server that would otherwise accept the connection but reject every fill.
+	expires := strconv.FormatInt(time.Now().Add(30*time.Second).UnixMilli(), 10)
+	if err := c.client.Do(checkCtx, "SET", probe, "1", "NX", "PXAT", expires).Err(); err != nil {
 		return fmt.Errorf("thumbnail redis write probe failed: %w", err)
 	}
-	defer c.client.Do(context.WithoutCancel(ctx), "UNLINK", probe)
+	// UNLINK is required by the deletion outbox worker. Ignoring its result
+	// would let an ACL without +unlink pass startup and retain bytes until TTL.
+	defer func() {
+		if err := c.client.Do(context.WithoutCancel(ctx), "UNLINK", probe).Err(); err != nil && retErr == nil {
+			retErr = fmt.Errorf("thumbnail redis unlink probe failed: %w", err)
+		}
+	}()
 	value, err := cmdBytes(c.client.Do(checkCtx, "GETRANGE", probe, 0, 0))
 	if err != nil || string(value) != "1" {
 		return fmt.Errorf("thumbnail redis range probe failed")

@@ -93,6 +93,12 @@ func (c Config) Validate(environment string) error {
 	if c.Namespace != want {
 		return fmt.Errorf("%w: namespace must be %q", errConfig, want)
 	}
+	return c.validateRuntime()
+}
+
+// validateRuntime checks the parts New can verify without an environment
+// binding. Validate additionally requires the namespace to match environment.
+func (c Config) validateRuntime() error {
 	host, port, err := net.SplitHostPort(c.Address)
 	if err != nil || host == "" || port == "" || strings.ContainsAny(c.Address, " \t\r\n") {
 		return fmt.Errorf("%w: address must be host:port", errConfig)

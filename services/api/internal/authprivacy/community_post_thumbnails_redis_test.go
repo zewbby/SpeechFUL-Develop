@@ -23,6 +23,7 @@ type thumbnailCacheProbe struct {
 	deletes    int
 	corrupt    bool
 	failDelete bool
+	beforeGet  func()
 }
 
 func (p *thumbnailCacheProbe) Key(parts postthumbnailcache.KeyParts) (string, error) {
@@ -30,6 +31,9 @@ func (p *thumbnailCacheProbe) Key(parts postthumbnailcache.KeyParts) (string, er
 }
 
 func (p *thumbnailCacheProbe) Get(_ context.Context, key string, width, height, byteLength int, digest string) (postmedia.ThumbnailRecord, bool) {
+	if p.beforeGet != nil {
+		p.beforeGet()
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.gets++
@@ -150,6 +154,43 @@ func TestThumbnailRedisHotPathAndFillPolicyPostgres(t *testing.T) {
 	if afterBad.SourceReads != afterHit.SourceReads || afterBad.Transforms != afterHit.Transforms ||
 		afterBad.Hits != afterHit.Hits+1 || afterBad.PayloadReads != afterHit.PayloadReads+1 {
 		t.Fatal("bad Redis value did not use bounded PG payload fallback")
+	}
+}
+
+func TestThumbnailRedisHitRequiresLivePGDerivativePostgres(t *testing.T) {
+	f, probe := redisThumbnailFixture(t)
+	readThumbnail(t, f) // generate the PostgreSQL derivative
+	readThumbnail(t, f) // fill Redis from the bounded PG payload
+	readThumbnail(t, f) // this read is served by Redis
+	if probe.hits != 1 {
+		t.Fatalf("expected one Redis hit, got %d", probe.hits)
+	}
+	before, err := f.l.c.PostThumbnailStats(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var once sync.Once
+	var deleteErr error
+	probe.beforeGet = func() {
+		once.Do(func() {
+			_, deleteErr = f.l.cp.Exec(context.Background(), `DELETE FROM c_posts.thumbnails WHERE post_id=$1`, f.post)
+		})
+	}
+	// The cached bytes were prepared while the row existed. Deleting the row
+	// before final authorization must force a rebuild, never release the hit.
+	readThumbnail(t, f)
+	if deleteErr != nil {
+		t.Fatal(deleteErr)
+	}
+	after, err := f.l.c.PostThumbnailStats(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Transforms != before.Transforms+1 || after.Hits != before.Hits {
+		t.Fatalf("stale Redis hit was released: transforms %d->%d hits %d->%d", before.Transforms, after.Transforms, before.Hits, after.Hits)
+	}
+	if count(t, f.l.cp, `SELECT count(*) FROM c_posts.thumbnails WHERE post_id=$1`, f.post) != 1 {
+		t.Fatal("rebuilt derivative missing")
 	}
 }
 
