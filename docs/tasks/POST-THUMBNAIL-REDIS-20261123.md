@@ -8,7 +8,7 @@
 - 授权依据与边界：用户“阅读并完成任务”并指定《SpeechFUL 帖子缩略图 Redis 缓存实施方案（2026-11-23）》；该方案不授权 push、合并、试用环境升级或生产部署，本记录不产生新授权
 - 需求确认：以方案正文为实现契约；默认关闭，PostgreSQL 仍为原图、衍生字节、版本、可见性与最终授权权威。未决产品取舍：Redis 私有副本最大逻辑残留时间、每实例资源预算、目标流量分配、生产开关阈值；若要求删除与 PostgreSQL 同事务抹除 Redis 字节，本方案不满足，生产开关保持关闭。迁移因基线已有 `0054` 顺延为 `0055`
 - 更新日期：2026-11-24
-- 状态：实现 已完成（本地提交 `176b1f0`）；验证 进行中（静态/单元/真实 Redis/迁移冒烟 PASS；真机同客户端复用 A/B PASS；Redis 服务方法 A/B PASS；真实隔离 lab 全矩阵 NOT_RUN）；合并 未合并；发布 未发布
+- 状态：实现 已完成（本地提交 `176b1f0`）；验证 进行中（静态/单元/真实 Redis/迁移冒烟 PASS；真机同客户端复用 A/B PASS；Redis 服务方法 A/B PASS；真机 Redis 端到端 PASS；真实隔离 lab 全矩阵 NOT_RUN）；合并 未合并；发布 未发布
 
 ## 目标与范围
 
@@ -50,10 +50,11 @@
 | 真实 PostgreSQL lab（全矩阵） | WSL2 `Ubuntu-2404`（Linux 6.6.87.2）；一次性 private unix-socket PostgreSQL 16.15；Pillow 12.3.0；真实 HTTPS C/V Gate fixture | NOT_RUN：WSL2 已可用，真机 fixture 已在隔离 private-socket PostgreSQL/Python/HTTPS 上跑通（见下行）；`run-post-images-isolated.sh` 完整矩阵尚未执行，不以 fixture 代替矩阵通过 |
 | 真机同客户端复用 A/B | Xiaomi `24129PN74C`（Android 17／SDK 37，HyperOS V816）；代码 head `2e8bb2f`（APK 构建后工作树无产品差异）；profile APK SHA-256 `e1754fcbd70026152762d12b0640f1e8d34b735c7140ad8b513b0d156d152fa4`；WSL2 一次性 private-socket PostgreSQL 16.15＋Pillow 12.3.0＋真实 HTTPS C/V Gate；`/baseline` 仅 `WithPostImages`，`/reuse` 另开 `WithPostThumbnailReuse`，Redis 未启用 | PASS（同客户端开关归因，≥30%）：8 轮，前 2 轮预热，6 轮交替配对记录；基线（上中位）546.707ms、复用 359.552ms，下降 **34.23%**；中点中位 536.679/359.338ms＝33.04%，均值 531.366/359.904ms＝32.27%；12 样本；每轮首屏可见图片实际绘制，原生 vault 每轮 6 读 0 写；测试 status=PASS。原始结果 `.zcode/req004-result.json`，设备日志 `.zcode/req004-device-run.log`。边界：仅证明当前客户端复用开关收益；REQ-004 正式“双版本完整比较”验收与 Redis 热缓存增量均未由本结果覆盖 |
 | Redis A/B（服务方法） | 代码 `f82bc28`（仅文档变更，代码同 `2e8bb2f`）；WSL2 `Ubuntu-2404`；一次性 private-socket PostgreSQL 16.15；Redis 7.0.15（一次性 `127.0.0.1:6391`，requirepass，无持久化）；Pillow 12.3.0；1024×768 JPEG，种子 515151；每路每轮 5 次预热＋40 次测量，3 轮交替；两组独立运行 | PASS（测试通过；按设计报告配对分布，不设任意降幅门槛）：Redis 路径 p95 稳定在 4.90–5.74ms；PostgreSQL 复用路径 5.06–7.84ms；六组降幅 2.24%、3.07%、27.47%、19.25%、2.97%、35.47%，中位 11.16%；每次运行 `gets=136,hits=135,misses=1`，Redis 测量路径共 135 次请求。原始日志 `.zcode/req004-redis-lab.log`、`.zcode/req004-redis-lab-run2.log`。边界：服务方法级、本机 loopback，收益主要来自省去 PostgreSQL payload 读取；不含 HTTPS/设备，且 PostgreSQL p95 波动较大，不外推生产 SLO |
+| 真机 Redis 端到端 | Xiaomi `24129PN74C`（Android 17／SDK 37，HyperOS V816）；客户端 APK 同 `2e8bb2f`（profile，SHA-256 `e1754fcbd70026152762d12b0640f1e8d34b735c7140ad8b513b0d156d152fa4`，未改客户端）；Go 设备夹具 `a25d8e6`；WSL2 `Ubuntu-2404`；一次性 private-socket PostgreSQL 16.15；Redis 7.0.15（`127.0.0.1:6391`，requirepass，无持久化）；Pillow 12.3.0；真实 HTTPS C/V Gate | PASS：8 轮交替；`/baseline` 仅 `WithPostImages`，`/reuse` 另开复用并挂载 Redis；首次 `/reuse` 未命中后回填，其后 7 次命中。上中位基线 560.6ms vs 复用+Redis 380.8ms，下降 **32.08%**；12 样本；每轮可见图片实际绘制，原生 vault 每轮 6 读 0 写。Redis `gets=8 hits=7 misses=1 fills_set=1`，`dbsize=1`，`keyspace_hits=8`／`keyspace_misses=1`。原始结果 `.zcode/req004-device-redis-result.json`，夹具日志 `.zcode/req004-device-redis-lab.log`。边界：A/B 为“无复用” vs “复用+Redis”，设备侧未单独隔离 Redis 增量（增量见服务方法 A/B 行）；命中发生在首轮回填之后，故本次数字仍主要体现复用开关；REQ-004 正式双版本验收与完整矩阵未覆盖 |
 
 ## 阻碍与下一步
 
 - WSL2 实际发行版为 `Ubuntu-2404`，unix socket PostgreSQL 与 Go/Python fixture 已可用；此前“WSL2 不可用”的判断来自错误的发行版名，已由本轮消除。原生 Windows PostgreSQL 仍不满足 unix socket 隔离条件。
-- 待完成：执行 `services/api/authlab/run-post-images-isolated.sh` 的完整矩阵（真实 PostgreSQL/Redis/Python/HTTPS、双账号、替换/隐藏/删除、撤销/代次、提交 ACK 丢失、Redis 故障与删除竞态）。Redis 服务方法 A/B 已完成两组独立复跑；真机同客户端复用 A/B 已完成；REQ-004 正式“双版本完整比较”30% 验收仍待按该口径单独执行。
+- 待完成：执行 `services/api/authlab/run-post-images-isolated.sh` 的完整矩阵（真实 PostgreSQL/Redis/Python/HTTPS、双账号、替换/隐藏/删除、撤销/代次、提交 ACK 丢失、Redis 故障与删除竞态）。Redis 服务方法 A/B 已完成两组独立复跑；真机同客户端复用 A/B、真机 Redis 端到端已完成；REQ-004 正式“双版本完整比较”30% 验收仍待按该口径单独执行。
 - 产品待决：最大逻辑残留时间、每实例资源预算、目标流量分配、生产开关阈值；若要求删除与 PostgreSQL 同事务抹除 Redis 字节，则该场景不得开启，生产开关保持关闭。
-- 本地提交 `176b1f0`、`2e8bb2f` 已形成；未 push、未创建 PR、未合并、未部署，等待用户就推送/PR 另行授权。
+- 本地提交 `176b1f0`、`2e8bb2f`、`a25d8e6` 已形成；未 push、未创建 PR、未合并、未部署，等待用户就推送/PR 另行授权。
