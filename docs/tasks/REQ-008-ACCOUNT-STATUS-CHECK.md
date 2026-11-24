@@ -3,12 +3,12 @@
 - 模式：常规
 - 负责人／状态维护人：当前 Session
 - 执行 Session（指挥模式）：无
-- 分支／Worktree／PR：`perf/account-status-check`，Worktree `E:\speechful-account-status`；基线 `develop/main@bc599b3`（远端 `zewbby/SpeechFUL-Develop` 的 `main`）；实现提交 `de6303c`；PR 未创建
+- 分支／Worktree／PR：`perf/account-status-check`，Worktree `E:\speechful-account-status`；基线 `develop/main@bc599b3`（远端 `zewbby/SpeechFUL-Develop` 的 `main`）；实现提交 `de6303c`；[PR #31](https://github.com/zewbby/SpeechFUL-Develop/pull/31)，base `main`，创建时 head `87451f8`（本记录提交后顺延）
 - 本轮规则版本（指挥模式）：不适用
-- 授权依据与边界：用户 2026-11-23 提供《SpeechFUL-社区账号状态检查优化实施方案-20261123.md》并指令“阅读并完成”。仅执行方案中已确认的评论事务 SQL 去重；阶段二、三按方案自带启动条件以证据判断，不满足即记录理由并关闭。未授权 push、PR、合并或部署；不修改 HTTP、OpenAPI、数据库 schema、移动端或 Redis。
+- 授权依据与边界：用户 2026-11-23 提供《SpeechFUL-社区账号状态检查优化实施方案-20261123.md》并指令“阅读并完成”。仅执行方案中已确认的评论事务 SQL 去重；阶段二、三按方案自带启动条件以证据判断，不满足即记录理由并关闭。用户 2026-11-24 授权推送分支并创建 PR；合并、部署仍未授权。不修改 HTTP、OpenAPI、数据库 schema、移动端或 Redis。
 - 需求确认：方案已给出三个阶段的边界、30 秒参数和“可只交付有实证收益阶段”的规则；阶段二、三的启动条件是可核实事实，按方案执行，不产生新的业务取舍。未决取舍：无。
 - 更新日期：2026-11-24
-- 状态：实现 完成（阶段一；阶段二、三按条件关闭）；验证 PASS（阶段一自动化 + Xiaomi 15 真机评论链路）、SKIP（阶段二、三按条件不实施）；合并 未合并；发布 未发布
+- 状态：实现 完成（阶段一；阶段二、三按条件关闭）；验证 PASS（阶段一自动化 + Xiaomi 15 真机评论链路）、SKIP（阶段二、三按条件不实施）；PR #31 已创建，CI 待回填；合并 未合并；发布 未发布
 
 ## 目标与范围
 
@@ -59,6 +59,7 @@
 | 真机评论创建与持久化 | Xiaomi 15（`24129PN74C`）/ Android 17 / API 37 / arm64-v8a；服务端由任务分支 `961a5ab`（含 `de6303c`）构建，binary SHA-256 `b5798808…`；一次性开发 C/V 服务与一次性开发库；debug APK `1.2.0 (2026111701)`，2026-11-24 04:13 安装；账号 `synthetic_viewer`（身份“南风”） | PASS：在帖子 `82079d7c-f3bb-4061-af4b-9f45de1415a6` 发布评论 `device-smoke-20261124`；界面“评论”计数 0→1，正文与作者显示；开发库 `c_comments.attempts` 版本 1 为 `PUBLISHED`，`accepted_at 04:15:58`、`terminal_at 04:15:59`；重新登录后该帖仍为 1 条评论且正文可见。截图 `device-comment-{07,10,16}-*.png` 留存于本地未提交 `.zcode/` |
 | 真机任务详情读取 | 同一服务端与账号；`GET /api/v1/me/comment-tasks/907a5f5d-3730-47ef-849e-f825ac01ba67` | PASS：HTTP 200，`state=PUBLISHED`，`allowedActions=[]`，没有触发账号状态重复读取或回执变化 |
 | 开发环境修复 | 本机 WSL2 一次性开发库 | 启动任务分支服务前，开发库停在 0054 之前且运行时缺 0053 新增的 `password_login_limits` 权限；已前滚 0054 并重跑 `grant-*`（本地开发环境修复，不是产品 schema 或仓库迁移改动）。首次启动的 `authentication process failure` 由此产生，修复后 C/V `health/ready` 均为 ready |
+| 远端分支与 PR | 远端 `zewbby/SpeechFUL-Develop` | 分支 `perf/account-status-check` 已推送；[PR #31](https://github.com/zewbby/SpeechFUL-Develop/pull/31) 已创建，base `main`，创建时 head `87451f8`；CI 结果待回填 |
 | 阶段二判定 | 基线移动端源码 | SKIP：无可复用的全局“账号是否受限”提示接口，详见下表 |
 | 阶段三判定 | 基线服务端源码 | SKIP：无“Redis 命中替代某条 PostgreSQL 读取”的候选，详见下文 |
 | 产品级延迟 | 真实规模数据 | NOT_RUN（真机只做功能烟测，未采集 P50/P95） |
@@ -88,7 +89,8 @@
 
 ## 阻碍与下一步
 
-- 实现与验证已在本地完成，未 push、未创建 PR、未合并、未部署；后续动作需新授权。
+- 已推送分支并创建 [PR #31](https://github.com/zewbby/SpeechFUL-Develop/pull/31)；合并、部署仍未获授权，需另行确认。
+- 当前 PR head 的适用 CI 结果待回填；本记录提交会顺延 head，回填时以实际 head 为准。
 - `TestCommentBusinessMediaDeleteLikesNoticesPostgres` 因未配置真实图片校验器 SKIP，点赞/删除的专用正向覆盖未在本轮执行；相关代码路径未改动。
 - `applyCommentMutation` 仍保留同类账号状态读取。它不在方案限定的两个最小改动点内，且拒绝码与执行分支不同；若后续要覆盖点赞/删除，需单独确认并补充行为对照。
 - 真机评论创建、评论持久化和评论任务详情读取已 PASS。用户最初点名小米 8，实际接入的是 Xiaomi 15（`24129PN74C`），经用户确认按该设备继续；本记录不把它外推为小米 8 或其他机型结果。
