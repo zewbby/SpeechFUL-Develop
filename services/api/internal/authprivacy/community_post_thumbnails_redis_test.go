@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/postmedia"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/postthumbnailcache"
 )
@@ -227,5 +228,28 @@ func TestThumbnailCacheDeletionOutboxPostgres(t *testing.T) {
 	}
 	if err = f.l.cp.QueryRow(context.Background(), `SELECT count(*) FROM c_posts.thumbnail_cache_outbox WHERE completed_at IS NULL`).Scan(&pending); err != nil || pending != 0 {
 		t.Fatal("event not completed", pending, err)
+	}
+}
+
+func TestThumbnailMaintenanceRunsWithReuseDisabledPostgres(t *testing.T) {
+	// Durable storage is enabled while reuse and Redis are not. The periodic
+	// pass must still clean orphans and retire abandoned outbox events instead
+	// of dereferencing the absent cache.
+	f := newPreparedMediaFixture(t)
+	if f.l.c.postImages == nil || !f.l.c.postImages.thumbnailStorage || f.l.c.postImages.thumbnails != nil {
+		t.Fatal("fixture must have storage without reuse")
+	}
+	stale, fresh := uuid.NewString(), uuid.NewString()
+	insert := `INSERT INTO c_posts.thumbnail_cache_outbox
+ (event_id,post_id,content_version_id,variant,encoder_version,source_binding,output_digest,created_at)
+ VALUES($1,$2,$3,'thumbnail-v1-640',repeat('a',64),decode(repeat('00',32),'hex'),decode(repeat('11',32),'hex'),$4)`
+	mustExec(t, f.l.cp, insert, stale, uuid.NewString(), uuid.NewString(), time.Now().Add(-thumbnailCacheStalePending-time.Hour))
+	mustExec(t, f.l.cp, insert, fresh, uuid.NewString(), uuid.NewString(), time.Now())
+	f.l.c.postThumbnailMaintenancePass(context.Background())
+	if count(t, f.l.cp, `SELECT count(*) FROM c_posts.thumbnail_cache_outbox WHERE event_id=$1`, stale) != 0 {
+		t.Fatal("stale pending event survived a disabled cache pass")
+	}
+	if count(t, f.l.cp, `SELECT count(*) FROM c_posts.thumbnail_cache_outbox WHERE event_id=$1`, fresh) != 1 {
+		t.Fatal("fresh pending event was abandoned before its bound")
 	}
 }
