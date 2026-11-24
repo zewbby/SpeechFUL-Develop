@@ -18,7 +18,7 @@
 
 - `community_comments.go` 的 `executeCommentCommandOnce → applyCommentIntent`：删除与最终会话校验重复的 `SELECT state FROM c_auth.accounts WHERE account_id=$1` 及其不可达的 `ACCOUNT_CLOSING` 分支。
 - 同文件 `GetOwnCommentTask`：在 `v.CanRetry && !mutedAt(m, d.TrustedAt)` 分支直接执行原有 `checkCommentContext`，删除同一账号状态 SELECT。
-- 新增 `TestCommentAccountStateReadReusePostgres`，覆盖禁言中、禁言到期可重试、目标已删除、已发布四种任务状态，并用 pgx tracer 断言目标 SQL 为 0。
+- 新增 `TestCommentAccountStateReadReusePostgres`，覆盖禁言中、禁言到期可重试、目标已删除、已发布四种任务状态，并用 pgx tracer 断言目标 SQL 为 0；同时将 `TestCommentAccount` 加入 `comments-backend-text.yml` 的 `COMMENT_TEST_PATTERN` 与 `run-comment-text-isolated.sh` 默认 pattern，使该回归在 CI 执行。
 
 不包含：
 
@@ -53,6 +53,7 @@
 | 改前回归 | 基线源码 `develop/main@bc599b3` + 新测试 | FAIL：`duplicate account state read 3`（脚本流程内 3 次重复读取） |
 | 改后回归 | `de6303c` | PASS：同一脚本流程目标 SQL 为 0 |
 | 定向隔离测试 | WSL2 Ubuntu-24.04 / PostgreSQL 16；`services/api/authlab/run-comment-text-isolated.sh`，`COMMENT_TEST_PATTERN=^(TestCommentTextTransactionsPostgres\|TestCommentTextFailureRetryAbandonPostgres\|TestCommentTextFrozenGatePostgres\|TestCommentAccountStateReadReusePostgres)$` | PASS：4 项全部通过；评论 HTTP 包无匹配测试，按 runner 正常跳过 |
+| CI 覆盖 | `.github/workflows/comments-backend-text.yml`、`services/api/authlab/run-comment-text-isolated.sh` | 新增回归已纳入 `COMMENT_TEST_PATTERN`，在 `text-component` 作业执行；结果以 PR 实时 CI 为准 |
 | 完整评论区 CI 模式 | 同一隔离 fixture；runner 默认 pattern | PASS：`TestCommentTextTransactionsPostgres`、`TestCommentTextFailureRetryAbandonPostgres`、`TestCommentTextFrozenGatePostgres`、`TestCommentTextRuntimeAndSQLGuardsPostgres`、`TestCommentTextUnavailablePostPostgres`、`TestCommentTextClosureCleanupWithFeatureDisabledPostgres`、迁移链、帖子 schema 与 moderation 升级均 PASS；`TestCommentTextHTTPSPostgres` 的 original/prepared 均 PASS；`TestCommentBusinessMediaDeleteLikesNoticesPostgres` 与 `TestCommentBusinessHTTPSPostgres` 因“dedicated real validator not configured” SKIP |
 | 全量 Go | 同一 WSL2；`go test -mod=readonly -count=1 ./...` | PASS：所有包通过；无 DSN 的集成测试按既有逻辑 skip |
 | 静态检查 | 同一 WSL2；`go vet -mod=readonly ./...`、`go build -mod=readonly ./...`、改动文件 LF 副本 `gofmt` | PASS：vet 无输出、build 成功、两个改动文件 gofmt 无差异 |
