@@ -3,12 +3,12 @@
 - 模式：常规
 - 负责人／状态维护人：当前 Session
 - 执行 Session（指挥模式）：无
-- 分支／Worktree／PR：`codex/feat/about-page-copy`；`E:/code_collection/java_code/SpeechFUL.git`；PR 待创建
+- 分支／Worktree／PR：`codex/feat/about-page-copy`；`E:/code_collection/java_code/SpeechFUL.git`；[PR #37](https://github.com/zewbby/SpeechFUL-Develop/pull/37)
 - 本轮规则版本（指挥模式）：不适用
 - 授权依据与边界：用户 2026-11-25 提供最终文案，要求建立分支、完成修改、验证并创建 PR；不改应用包版本、发布元数据或合并。
 - 需求确认：关于页按用户提供文本展示，入口版本与页内版本同步为 `v2.0.0`；补齐繁体中文、英文和日文翻译，并保证长文案可滚动。无未决取舍。
 - 更新日期：2026-11-25
-- 状态：实现 已完成；验证 PASS（聚焦）；本地构建 BLOCKED；合并 未合并；发布 未发布
+- 状态：实现 已完成；验证 PASS；合并 未合并；发布 未发布
 
 ## 目标与范围
 
@@ -28,12 +28,13 @@
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
-| 实现 | `develop/main@a20a45e` 加本分支差异 | 已完成关于页文案、版本值、四语翻译及可滚动布局。 |
+| 实现 | `a7418bc`（基于 `develop/main@a20a45e`） | 已完成关于页文案、版本值、四语翻译及可滚动布局。 |
 | 静态分析 | Windows 11 25H2 x64；Flutter 3.47.5／Dart 3.13.4；`flutter analyze --no-pub` | PASS：No issues found。 |
 | 聚焦测试 | 同一环境；`flutter test --no-pub test/settings_screen_test.dart test/app_localizations_test.dart --reporter expanded` | PASS：18 项，包含四语完整文案及 320×360、1.8 倍字号滚动无溢出。 |
 | 全量移动端测试 | 同一环境；`flutter test --no-pub --concurrency=2` | FAIL（环境）：1285 项通过、4 项跳过、11 项失败；失败均为 TLS 夹具调用不存在的 `openssl`，与关于页差异无关。 |
-| 本地 Android 构建 | 同一环境；`flutter build apk --debug --no-pub`、`flutter build bundle --debug --no-pub` | BLOCKED：本机未安装或未配置 Android SDK；等待 PR 产品 CI。 |
+| 本地 Android 构建 | 同一环境；`flutter build apk --debug --no-pub`、`flutter build bundle --debug --no-pub` | BLOCKED：本机未安装或未配置 Android SDK。 |
+| 产品 CI | [PR #37](https://github.com/zewbby/SpeechFUL-Develop/pull/37)，head `a7418bc` | PASS：11 个工作流成功；22 个检查中 21 个成功、1 个条件跳过、0 失败，包含 Android 预发布、iOS 编译、Flutter 与集成回归。 |
 
 ## 阻碍与下一步
 
-本机缺少 Android SDK 与 `openssl`，无法完成目标包和全量 TLS 测试；提交并创建 PR 后以在线产品 CI 补齐构建与测试结果。
+本机缺少 Android SDK 与 `openssl`，因此本地目标包与全量 TLS 测试不可复现；对应产品链路已由 PR 产品 CI 覆盖。合并与发布仍待用户明确授权。
