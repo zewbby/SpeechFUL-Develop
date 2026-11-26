@@ -100,16 +100,16 @@ mixin _PersonalProfile on State<PersonalPostsScreen> {
   /// 空页签占位：高度覆盖“页签栏以下的完整可用区域”，文字在空白区内居中。
   /// 高度不足会让空白页在滚动时被弹回顶部；高度变化时文字位置随之调整。
   Widget _emptySliver(BuildContext context, Widget child) => SliverLayoutBuilder(
-    builder: (context, constraints) => SliverToBoxAdapter(
-      child: SizedBox(
-        height: (constraints.viewportMainAxisExtent - 56).clamp(
-          0.0,
-          double.infinity,
+        builder: (context, constraints) => SliverToBoxAdapter(
+          child: SizedBox(
+            height: (constraints.viewportMainAxisExtent - 56).clamp(
+              0.0,
+              double.infinity,
+            ),
+            child: Center(child: child),
+          ),
         ),
-        child: Center(child: child),
-      ),
-    ),
-  );
+      );
 
   /// 页签内容较少时补一段尾部空白，使可滚动范围至少达到“头像区收起、标签栏
   /// 固定”的位置；否则从深滚动位置切到内容少的页签会被夹回页面顶部。
@@ -940,8 +940,7 @@ mixin _PersonalProfile on State<PersonalPostsScreen> {
 
   Future<void> _sort(bool hot) async {
     if (hot && !widget.controller.supportsInteractions) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(hhText(context, '热度数据暂不可用'))));
+      showHhFeedback(context, '热度数据暂不可用');
       return;
     }
     if (_sorting || widget.controller.personalLoading) return;
@@ -975,9 +974,7 @@ mixin _PersonalProfile on State<PersonalPostsScreen> {
     } catch (_) {
       if (mounted && _authority.current && identityEpoch == _identityEpoch) {
         setState(() => _hot = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(hhText(context, '暂时无法获取完整热度，请重试'))),
-        );
+        showHhFeedback(context, '暂时无法获取完整热度，请重试');
       }
     } finally {
       if (mounted && identityEpoch == _identityEpoch) {
@@ -1755,9 +1752,7 @@ class _ProfilePostState extends State<_ProfilePost> {
     final edited = widget.controller.confirmedEdit(widget.post.postId);
     if (edited != null) widget.controller.refreshEditedPost(edited);
     if (outcome.isNotEmpty) {
-      ScaffoldMessenger.maybeOf(
-        context,
-      )?.showSnackBar(SnackBar(content: Text(outcome)));
+      showHhFeedback(context, outcome);
     }
   }
 
@@ -1773,16 +1768,7 @@ class _ProfilePostState extends State<_ProfilePost> {
     if (!mounted || !_authority.current || confirmed != true) return;
     final deleted = await widget.controller.deletePost(widget.post.postId);
     if (!mounted || !_authority.current || deleted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(
-        content: Text(
-          hhText(
-            context,
-            widget.controller.errorMessage ?? '删除结果待核对',
-          ),
-        ),
-      ),
-    );
+    showHhFeedback(context, widget.controller.errorMessage ?? '删除结果待核对');
   }
 
   @override
@@ -2004,30 +1990,30 @@ class PostFlatCard extends StatelessWidget {
                           child: _tappable(
                             onAuthor,
                             Wrap(
-                            spacing: 6,
-                            runSpacing: 2,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Text(
-                                author,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: p.ink,
+                              spacing: 6,
+                              runSpacing: 2,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text(
+                                  author,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: p.ink,
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                elapsed,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: p.secondary,
+                                Text(
+                                  elapsed,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: p.secondary,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
                             ),
                           ),
                         ),
@@ -2452,6 +2438,79 @@ class RenderSliverTransform extends RenderSliver
   }
 }
 
+/// 未完成发布集合的展开/收起共用同一按钮样式与按压动画。
+class _PendingToggleButton extends StatefulWidget {
+  const _PendingToggleButton({required this.expanded, required this.onPressed});
+  final bool expanded;
+  final VoidCallback onPressed;
+
+  @override
+  State<_PendingToggleButton> createState() => _PendingToggleButtonState();
+}
+
+class _PendingToggleButtonState extends State<_PendingToggleButton>
+    with SingleTickerProviderStateMixin {
+  late final _press = AnimationController.unbounded(vsync: this, value: 1);
+
+  void _release() => _press.animateTo(
+    1,
+    duration: HhMotion.pressOut,
+    curve: HhMotion.curve,
+  );
+
+  @override
+  void dispose() {
+    _press.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (_) => _press.animateTo(
+        .96,
+        duration: HhMotion.pressIn,
+        curve: HhMotion.curve,
+      ),
+      onPointerUp: (_) => _release(),
+      onPointerCancel: (_) => _release(),
+      child: ScaleTransition(
+        scale: _press,
+        child: TextButton(
+          key: ValueKey(
+            widget.expanded
+                ? 'profile-pending-collapse'
+                : 'profile-pending-expand',
+          ),
+          onPressed: widget.onPressed,
+          style: TextButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                widget.expanded
+                    ? Icons.expand_less_rounded
+                    : Icons.expand_more_rounded,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(hhText(context, widget.expanded ? '收起' : '展开')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 未完成、未发布帖子的收起态：多行紧凑摘要收在同一个容器里，每行可直接点开，底部按钮展开。
 class _UnfinishedStack extends StatelessWidget {
   const _UnfinishedStack({
@@ -2505,21 +2564,7 @@ class _UnfinishedStack extends StatelessWidget {
                     style: TextStyle(fontSize: 12, color: p.secondary),
                   ),
                   const Spacer(),
-                  FilledButton.icon(
-                    onPressed: onExpand,
-                    style: FilledButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Icon(Icons.expand_more_rounded, size: 18),
-                    label: Text(hhText(context, '展开')),
-                  ),
+                  _PendingToggleButton(expanded: false, onPressed: onExpand),
                 ],
               ),
             ),
@@ -2568,10 +2613,9 @@ class _PendingSectionState extends State<_PendingSection> {
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
             child: Align(
               alignment: Alignment.centerRight,
-              child: OutlinedButton.icon(
+              child: _PendingToggleButton(
+                expanded: true,
                 onPressed: () => _toggle(expand: false),
-                icon: const Icon(Icons.expand_less_rounded, size: 18),
-                label: Text(hhText(context, '收起')),
               ),
             ),
           ),
