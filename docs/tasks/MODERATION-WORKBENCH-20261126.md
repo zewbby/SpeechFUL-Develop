@@ -43,9 +43,9 @@
 | OpenAPI | Python 3.12、PyYAML 6.0.1、openapi-spec-validator 0.9.0 | PASS：13 份规范完整校验 |
 | Go 编译 | Go 1.26.2；`GOOS=linux go vet`、`go build ./cmd/...`、`GOOS=linux go test -c` 两个受影响包；`internal/moderation` 本机测试 | PASS：静态检查、命令构建、Linux 测试二进制编译与 moderation 包测试通过 |
 | 协作检查 | 暂存差异；`python tools/check-collaboration.py --staged`、19 项协作测试 | PASS |
-| 真实 Linux SQL／HTTPS | PR #39 head `ead5b71`，[Report moderation run 45786333279](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/45786333279) | PASS：`admin` 与 `moderation-postgres` 均成功；新 `TestModerationCaseFilter`、`TestModerationCaseListFiltersPostgres` PASS，真实 PostgreSQL、权限、HTTP 与浏览器工作台回归 PASS |
+| 真实 Linux SQL／HTTPS | PR #39 产品实现提交 `ead5b71`；文档头 `64818da` 复跑，[Report moderation run 45787491266](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/45787491266) | PASS：`admin` 与 `moderation-postgres` 均成功；新 `TestModerationCaseFilter`、`TestModerationCaseListFiltersPostgres` PASS，真实 PostgreSQL、权限、HTTP 与浏览器工作台回归 PASS |
 
 ## 阻碍与下一步
 
 - 本机缺少 Linux runtime，但对应真实测试已由 PR #39 的 `Report moderation` CI 在 Linux `moderation-postgres` 作业中执行并通过。
-- 下一步：推送本记录更新，核对最终 head 的适用 CI，并将 PR 转为正式送审；合并与部署仍需另行授权。
+- 下一步：本记录更新后如仅文档变化，不改变上述产品 CI 的证明范围；PR 可转为正式送审。合并与部署仍需另行授权。
