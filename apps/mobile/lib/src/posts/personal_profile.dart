@@ -571,6 +571,7 @@ mixin _PersonalProfile on State<PersonalPostsScreen> {
     _replyLoaded = _replyLoading = false;
     _replyCursor = null;
     _replyError = null;
+    _clearPostCardCache();
     if (_tab == 1 && id != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _authority.current) unawaited(_loadReplies());
@@ -593,6 +594,7 @@ mixin _PersonalProfile on State<PersonalPostsScreen> {
     _collectionCursors.clear();
     _collectionErrors.clear();
     _collectionLoading.clear();
+    _clearPostCardCache();
     final tab = _tab;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_authority.current || _tab != tab) return;
@@ -616,6 +618,7 @@ mixin _PersonalProfile on State<PersonalPostsScreen> {
     _collectionCursors.clear();
     _collectionErrors.clear();
     _collectionLoading.clear();
+    _clearPostCardCache();
     final tab = _tab;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_authority.current || _tab != tab) return;
@@ -859,6 +862,17 @@ mixin _PersonalProfile on State<PersonalPostsScreen> {
   final _collectionCursors = <int, String?>{};
   final _collectionErrors = <int, String>{};
   final _collectionLoading = <int>{};
+
+  // 页签内容本身按页签缓存；卡片级详情、互动与本人能力原来会在每次
+  // 切回页签时随卡片重建各发一次请求，这里按帖子复用以保留页面状态。
+  final _postDetails = <String, PostDetail>{};
+  final _postCapabilities = <String, PostCapabilities>{};
+  int _postCacheEpoch = 0;
+  void _clearPostCardCache() {
+    _postCacheEpoch++;
+    _postDetails.clear();
+    _postCapabilities.clear();
+  }
 
   Future<void> _loadCollection(int tab, {bool more = false}) async {
     if (_collectionLoading.contains(tab) || !_authority.current) return;
@@ -1129,6 +1143,7 @@ mixin _PersonalProfile on State<PersonalPostsScreen> {
     final publishedItems = items.where((e) => e.post != null).toList();
     return RefreshIndicator(
       onRefresh: () async {
+        _clearPostCardCache();
         if (_tab == 2) {
           await _refreshReposts();
         } else if (_tab == 1) {
@@ -1254,11 +1269,25 @@ mixin _PersonalProfile on State<PersonalPostsScreen> {
                         itemCount: publishedItems.length,
                         itemBuilder: (context, index) {
                           final item = publishedItems[index];
+                          final cacheEpoch = _postCacheEpoch;
                           return _ProfilePost(
                             key: ValueKey(item.id),
                             post: item.post!,
                             controller: c,
                             loadImages: widget.loadImages,
+                            initialDetail: _postDetails[item.post!.postId],
+                            initialCapabilities:
+                                _postCapabilities[item.post!.postId],
+                            onDetailLoaded: (detail) {
+                              if (cacheEpoch == _postCacheEpoch) {
+                                _postDetails[item.post!.postId] = detail;
+                              }
+                            },
+                            onCapabilitiesLoaded: (caps) {
+                              if (cacheEpoch == _postCacheEpoch && caps != null) {
+                                _postCapabilities[item.post!.postId] = caps;
+                              }
+                            },
                             onOpen: () => _open(item),
                           );
                         },
@@ -1400,12 +1429,19 @@ mixin _PersonalProfile on State<PersonalPostsScreen> {
                         itemCount: _collectionItems(_tab).length,
                         itemBuilder: (_, index) {
                           final post = _collectionItems(_tab)[index];
+                          final cacheEpoch = _postCacheEpoch;
                           return _ProfilePost(
                             key: ValueKey(('collection', _tab, post.postId)),
                             post: post,
                             controller: c,
                             loadImages: widget.loadImages,
                             own: false,
+                            initialDetail: _postDetails[post.postId],
+                            onDetailLoaded: (detail) {
+                              if (cacheEpoch == _postCacheEpoch) {
+                                _postDetails[post.postId] = detail;
+                              }
+                            },
                             onOpen: () => _open(
                               PersonalPostItem(
                                 id: post.postId,
@@ -1630,11 +1666,17 @@ class _ProfilePost extends StatefulWidget {
     this.loadImages,
     this.own = true,
     this.initialDetail,
+    this.initialCapabilities,
+    this.onDetailLoaded,
+    this.onCapabilitiesLoaded,
     this.onMenu,
     this.repostAction,
     this.repostTag,
   });
   final PostDetail? initialDetail;
+  final PostCapabilities? initialCapabilities;
+  final ValueChanged<PostDetail>? onDetailLoaded;
+  final ValueChanged<PostCapabilities?>? onCapabilitiesLoaded;
   final bool own;
   final PostCard post;
   final PostController controller;
@@ -1659,21 +1701,34 @@ class _ProfilePostState extends State<_ProfilePost> {
     });
   }
 
-  Future<void> _load() async {
-    final detail =
-        widget.initialDetail ??
-        await widget.controller.loadDetail(widget.post.postId);
+  Future<void> _load({bool refresh = false}) async {
+    PostDetail? detail = refresh ? null : (widget.initialDetail ?? _detail);
+    if (detail == null) {
+      detail = await widget.controller.loadDetail(widget.post.postId);
+      if (detail != null) widget.onDetailLoaded?.call(detail);
+    }
     if (!mounted || !_authority.current) return;
     setState(() {
       _detail = detail;
       _failed = detail == null;
     });
-    await widget.controller.loadInteractions([
-      widget.post.postId,
-    ], single: true);
+    // 首次加载后互动值已保存在控制器里；切回页签重建卡片时直接复用，
+    // 仅在值缺失或已被外部写入标记为需要刷新时才重新读取。
+    if (widget.controller.supportsInteractions) {
+      final interaction = widget.controller.interaction(widget.post.postId);
+      if (interaction.value == null || interaction.refreshPending) {
+        await widget.controller.loadInteractions([
+          widget.post.postId,
+        ], single: true);
+      }
+    }
     // 编辑／删除能力只在自己的帖子入口查询，避免列表页为每张卡片多发一次请求。
     if (!widget.own) return;
-    final caps = await widget.controller.postCapabilities(widget.post.postId);
+    PostCapabilities? caps = widget.initialCapabilities;
+    if (caps == null) {
+      caps = await widget.controller.postCapabilities(widget.post.postId);
+      widget.onCapabilitiesLoaded?.call(caps);
+    }
     if (!mounted || !_authority.current) return;
     setState(() {
       _canEdit = caps?.canEdit ?? false;
@@ -1695,7 +1750,7 @@ class _ProfilePostState extends State<_ProfilePost> {
       ),
     );
     if (!mounted || !_authority.current || outcome == null) return;
-    await _load();
+    await _load(refresh: true);
     if (!mounted || !_authority.current) return;
     final edited = widget.controller.confirmedEdit(widget.post.postId);
     if (edited != null) widget.controller.refreshEditedPost(edited);
