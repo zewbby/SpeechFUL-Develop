@@ -1,12 +1,12 @@
 # MODERATION-WORKBENCH-20261126 — 审核工作台值班队列完善
 
 - 模式：常规；负责人／状态维护人：当前 Session。
-- 分支／Worktree／PR：`codex/feat/moderation-workbench-refinement`；`E:/code_collection/java_code/SpeechFUL-moderation-workbench`；PR 未创建。
+- 分支／Worktree／PR：`codex/feat/moderation-workbench-refinement`；`E:/code_collection/java_code/SpeechFUL-moderation-workbench`；[PR #39](https://github.com/zewbby/SpeechFUL-Develop/pull/39)。
 - 基线：`develop/main@93deaf1`。
 - 授权依据与边界：用户要求“建立分支。完善审核平台，先提出设想然后进行实现，验证后PR”，并确认“验证后PR”。授权覆盖本任务实现、本地提交、推送分支与创建 PR；不包含合并或部署。
 - 需求确认：用户确认待处理优先的值班队列。案件默认“待处理”，可切换处理中／已结束／全部；按完整数字工单号精确搜索；队列支持键盘切换；提交前展示操作后果；操作记录可重试。未增加批量处理、导出、账号身份信息或其他治理规则。
 - 更新日期：2026-11-26
-- 状态：实现已完成；验证进行中；合并未合并；发布未发布。
+- 状态：实现已完成；验证 PASS；合并未合并；发布未发布。
 
 ## 目标与范围
 
@@ -37,14 +37,15 @@
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
-| 实现 | 分支工作区相对 `develop/main@93deaf1` 的差异 | 已完成接口、前端、测试和文档修改，待最终提交 |
+| 实现 | `ead5b71` | 已完成接口、前端、测试和文档修改并推送 PR #39 |
 | Node 与隐私契约 | Node 24.21.0；`node --check`、`node --test apps/admin/test/core.test.mjs` | PASS：15 项，覆盖筛选查询、操作摘要、未知结果与隐私边界 |
-| 合成 HTTPS 浏览器 | Playwright 1.62.1、Chrome、OpenSSL 3.5.4；一次性本机 HTTPS 夹具 | PASS：7 次业务命令、0 页面错误、0 外部请求，覆盖筛选／搜索／审计重试／键盘与窄窗 |
+| 合成 HTTPS 浏览器 | Playwright 1.62.1、Chrome、OpenSSL 3.5.4；一次性本机 HTTPS 夹具 | PASS：7 次业务命令、0 页面错误、0 外部请求，覆盖筛选／搜索／审计重试／键盘、1440px 与 390px |
 | OpenAPI | Python 3.12、PyYAML 6.0.1、openapi-spec-validator 0.9.0 | PASS：13 份规范完整校验 |
-| Go 编译 | Go 1.26.2；`GOOS=linux go test -c` 两个受影响包；`internal/moderation` 本机测试 | PASS：Linux 测试二进制编译成功，moderation 包测试通过 |
-| Go 运行 | 真实 Linux 环境 | BLOCKED：本机无 WSL／Docker；`authprivacy` 在 Windows 因既有 `syscall.Flock` 无法运行。由 PR 的 Linux `Report moderation` CI 补验 |
+| Go 编译 | Go 1.26.2；`GOOS=linux go vet`、`go build ./cmd/...`、`GOOS=linux go test -c` 两个受影响包；`internal/moderation` 本机测试 | PASS：静态检查、命令构建、Linux 测试二进制编译与 moderation 包测试通过 |
+| 协作检查 | 暂存差异；`python tools/check-collaboration.py --staged`、19 项协作测试 | PASS |
+| 真实 Linux SQL／HTTPS | PR #39 head `ead5b71`，[Report moderation run 45786333279](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/45786333279) | PASS：`admin` 与 `moderation-postgres` 均成功；新 `TestModerationCaseFilter`、`TestModerationCaseListFiltersPostgres` PASS，真实 PostgreSQL、权限、HTTP 与浏览器工作台回归 PASS |
 
 ## 阻碍与下一步
 
-- 本机缺少 Linux runtime，Go 的 `authprivacy`／`authprivacyhttp` 测试不能实际执行；已完成 Linux 测试二进制交叉编译，PR 创建后必须等待对应 CI。
-- 下一步：最终差异审查、协作检查、本地提交、推送分支并创建 PR。
+- 本机缺少 Linux runtime，但对应真实测试已由 PR #39 的 `Report moderation` CI 在 Linux `moderation-postgres` 作业中执行并通过。
+- 下一步：推送本记录更新，核对最终 head 的适用 CI，并将 PR 转为正式送审；合并与部署仍需另行授权。
