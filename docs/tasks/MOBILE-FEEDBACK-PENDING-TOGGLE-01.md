@@ -10,7 +10,7 @@
 
 ## 目标与范围
 
-新增 `showHhFeedback` 作为应用内 SnackBar 的唯一展示入口，将首页「不感兴趣」失败提示及帖子、评论、私信、举报、通知、设置、分享、头像流程中的同类提示全部接入。新提示替换当前提示，不排队叠加；使用浮动样式、2 秒自动关闭、叉号关闭和双向水平滑动移除。
+新增 `showHhFeedback` 作为应用内 SnackBar 的唯一展示入口，将首页「不感兴趣」失败提示及帖子、评论、私信、举报、通知、设置、分享、头像流程中的同类提示全部接入。SnackBar 仅作计时宿主（透明底、零内边距），可见胶囊自绘：配色取 `HhTelegramPalette`（surface/line/ink/secondary），高度紧凑（单行约 38px）；新提示替换当前提示，不排队叠加；2 秒自动关闭；叉号关闭；整颗胶囊（容器、图标、文字）随左右滑动一起位移并可移除。
 
 「我的」页未完成发布集合的展开和收起按钮复用 `_PendingToggleButton`，统一填充配色、尺寸、圆角和图标，并通过局部 `ScaleTransition` 与既有 `HhMotion` 时长提供按压缩放；保留原展开/收起状态及内容高度动画。
 
@@ -26,6 +26,7 @@
 
 - 「不感兴趣」失败及其他原 SnackBar 均呈现统一轻量反馈；业务源码不再直接调用 `showSnackBar`。
 - 2 秒自动关闭、叉号立即关闭、左滑和右滑均可关闭。
+- 胶囊为紧凑单行高度，配色与当前主题（浅色／深色 palette）一致；滑动时容器与文字同步位移。
 - 连续触发不排队显示多条；快速关闭及提示期间页面切换均可正常关闭。
 - 展开和收起按钮样式一致，使用共享按压动画；点击后集合状态与原有一致。
 
@@ -34,7 +35,7 @@
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
 | 实现 | `c791f94` ＋ 本轮工作区差异 | 统一反馈入口及全部 25 个调用点收敛；`_PendingToggleButton` 统一按钮外观与按压动画。 |
-| Widget 验证 | Windows 本机 Flutter；上述最终差异 | PASS：`flutter test --no-pub test/feedback_test.dart test/post_screens_test.dart test/feed_ui_test.dart test/identity_avatar_photo_test.dart test/identity_avatar_recovery_test.dart test/identity_avatar_scope_test.dart test/motion_test.dart test/personal_profile_test.dart`，118 项通过、1 项原配置跳过。覆盖自动关闭、叉号、连续触发、左右滑动、切页关闭、展开/收起及既有主页/头像/动效回归。 |
+| Widget 验证 | Windows 本机 Flutter；上述最终差异 | PASS：`flutter test --no-pub test/feedback_test.dart test/post_screens_test.dart test/feed_ui_test.dart test/identity_avatar_photo_test.dart test/motion_test.dart test/personal_profile_test.dart`，114 项通过、1 项原配置跳过。覆盖紧凑高度（<44）、浅／深色主题配色、胶囊与文字同步位移、自动关闭、叉号、连续触发、左右滑动、切页关闭、展开/收起及既有主页／头像／动效回归。 |
 | 静态检查 | 同上 | PASS（无 error／warning）：对所有本轮涉及 Dart 文件运行 `flutter analyze --no-pub`，仅 18 条既有 Material 弃用 info；`git diff --check` 通过。 |
 | 真机／模拟器 | 无 | NOT_RUN：实际触屏手感仍需设备验收。 |
 
