@@ -2,8 +2,8 @@
 
 - 模式：常规
 - 负责人／状态维护人：当前 Session
-- 分支／Worktree／PR：`feat/Home-Profile-update`；未创建 PR
-- 授权依据与边界：用户要求统一应用内提示交互并统一「我的」页未完成发布集合的展开/收起按钮；仅修改 `apps/mobile` 展示与交互，不改业务数据、权限或服务端；不 push、不合并、不部署。
+- 分支／Worktree／PR：`feat/home-profile-update`，已 rebase 到 `93deaf1`（`origin/main`；原分支从 `a20a45e` 建立），未创建 PR
+- 授权依据与边界：用户要求统一应用内提示交互并统一「我的」页未完成发布集合的展开/收起按钮；仅修改 `apps/mobile` 展示与交互，不改业务数据、权限或服务端；未 push、未合并、未部署。
 - 需求确认：轻量反馈显示后 2 秒自动关闭，提供明显叉号，支持左右滑动移除；其他同类 SnackBar 统一接入；展开/收起按钮同一样式并有按压动画。无未决取舍。
 - 更新日期：2026-11-26
 - 状态：实现 已完成；验证 PASS（Widget／静态检查），真机手势 NOT_RUN；合并 未合并；发布 未发布
@@ -34,9 +34,10 @@
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
-| 实现 | `c791f94` ＋ 本轮工作区差异 | 统一反馈入口及全部 25 个调用点收敛；`_PendingToggleButton` 统一按钮外观与按压动画。 |
-| Widget 验证 | Windows 本机 Flutter；上述最终差异 | PASS：`flutter test --no-pub test/feedback_test.dart test/post_screens_test.dart test/feed_ui_test.dart test/identity_avatar_photo_test.dart test/motion_test.dart test/personal_profile_test.dart`，114 项通过、1 项原配置跳过。覆盖紧凑高度（<44）、浅／深色主题配色、胶囊与文字同步位移、自动关闭、叉号、连续触发、左右滑动、切页关闭、展开/收起及既有主页／头像／动效回归。 |
-| 静态检查 | 同上 | PASS（无 error／warning）：对所有本轮涉及 Dart 文件运行 `flutter analyze --no-pub`，仅 18 条既有 Material 弃用 info；`git diff --check` 通过。 |
+| 实现 | `ab47547`（统一入口与全量接入）＋ `8e57ad7`（紧凑胶囊、整颗滑动、主题配色） | 统一反馈入口及全部 25 个调用点收敛；`_PendingToggleButton` 统一按钮外观与按压动画。 |
+| Widget 验证 | Windows 本机 Flutter 3.50.0；被测内容 = `8e57ad7` | PASS：`flutter test --no-pub test/feedback_test.dart test/post_screens_test.dart test/feed_ui_test.dart test/identity_avatar_photo_test.dart test/motion_test.dart test/personal_profile_test.dart`，114 项通过、1 项原配置跳过。覆盖紧凑高度（<44）、浅／深色主题配色、胶囊与文字同步位移、自动关闭、叉号、连续触发、左右滑动、切页关闭、展开/收起及既有主页／头像／动效回归。 |
+| 全量回归 | 同上，`flutter test --no-pub` | 1291 通过／4 跳过／12 失败；11 项为 TLS fixture 用例（本机缺 `openssl`，无法生成自签证书），1 项 `dm_chat_draft_ui_test` 仅在全量并行时失败、单跑通过。均与本轮差异无关，不计入本任务结论。 |
+| 静态检查 | 同上 | PASS（无 error／warning）：`flutter analyze --no-pub` 全量 202 条 info 均为既有 Material 弃用等提示；`git diff --check` 通过；协作规范检查（合规分支名与 PR 标题）通过。 |
 | 真机／模拟器 | 无 | NOT_RUN：实际触屏手感仍需设备验收。 |
 
 ## 阻碍与下一步

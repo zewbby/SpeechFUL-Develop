@@ -3,9 +3,9 @@
 - 模式：常规
 - 负责人／状态维护人：当前 Session
 - 执行 Session（指挥模式）：无
-- 分支／Worktree／PR：`feat/Home-Profile-update`，基线 `a20a45e`（`origin/main`），未创建 PR
+- 分支／Worktree／PR：`feat/home-profile-update`，已 rebase 到 `93deaf1`（`origin/main`；原分支从 `a20a45e` 建立），未创建 PR
 - 本轮规则版本（指挥模式）：不适用
-- 授权依据与边界：用户本轮指令“修复并优化以下两处问题……我调整的是 mobile 安卓部分，同时做好后要把对应的调试功能做到这里面 lib/dev”。仅改 `apps/mobile` 与 `lib/dev` 调试入口；未改服务端、未发布、未合并。
+- 授权依据与边界：用户本轮指令“修复并优化以下两处问题……我调整的是 mobile 安卓部分，同时做好后要把对应的调试功能做到这里面 lib/dev”。仅改 `apps/mobile`；未改服务端、未合并、未发布；push 与 PR 未授权。
 - 需求确认：页签缓存按“首次加载后复用卡片详情、互动、本人能力”实现，保留现有 Threads 式切页签滚动行为；「不感兴趣」按最直接语义限制为“自己的帖子不写入隐藏记录”，其他帖子仍沿用账号级长期隐藏（FEED-VECTOR-CARDS-01）。澄清问题未在窗口内得到回复，此取舍待用户最终确认。
 - 更新日期：2026-11-26
 - 状态：实现 已完成；验证 PASS；合并 未合并；发布 未发布
@@ -37,15 +37,14 @@
 
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
-| 实现 | 本工作区未提交改动（基线 `a20a45e`） | 已完成 `personal_profile.dart` 卡片级缓存、`hidden_post_controller.dart` 归属边界、`lib/dev/dev_diagnostics.dart` 调试面板 |
-| 验证 | Windows，Flutter SDK 3.47.5，命令 `flutter test test/feed_ui_test.dart test/personal_profile_test.dart` | PASS：58 个测试全部通过 |
+| 实现 | `2a8687d`（rebase 前的 `c791f94`） | 已完成 `personal_profile.dart` 卡片级缓存、`hidden_post_controller.dart` 归属边界；`lib/dev/dev_diagnostics.dart` 调试面板按用户要求于 2026-11-26 删除，`lib/dev` 预览入口保留 |
+| 验证 | Windows，Flutter SDK 3.50.0，命令 `flutter test test/feed_ui_test.dart test/personal_profile_test.dart` | PASS：58 个测试全部通过 |
 | 验证 | 同上，`test/post_screens_test.dart test/post_controller_test.dart test/post_edit_screen_test.dart test/community_localization_test.dart` | PASS：92 个测试全部通过 |
 | 验证 | 同上，`test/personal_reposts_integration_test.dart` | PASS |
-| 验证 | 同上，`lib/dev/dev_preview_smoke_test.dart --plain-name "完整 App 的调试面板能自检不感兴趣状态边界"` | PASS |
 | 验证 | 同上，`flutter analyze --no-pub` | 无 error／warning；仅既有 deprecated info |
 | 已知限制 | 同上，`lib/dev/dev_preview_smoke_test.dart` 的通知页模板用例 | 与本次改动无关、依赖当前时间的既有用例失败，未计入本次验收 |
 
 ## 阻碍与下一步
 
 - 待用户确认「不感兴趣」边界是否确为“自己的帖子不生效”；若用户实际期望“只隐藏这一条、不改任何账号级偏好”，则需调整 `changeHiddenPost` 的持久化策略。
-- 调试面板仅存在于本地 `lib/dev`（该目录为本地忽略项），未进入提交；如需进入版本库需用户确认。
+- 调试面板已删除（用户 2026-11-26 确认“没啥用处”），其边界自检由 `test/feed_ui_test.dart` 的用例覆盖；如需再次可视化观察，需重新实现。
