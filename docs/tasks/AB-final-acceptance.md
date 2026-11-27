@@ -1,10 +1,11 @@
 # 推荐核心交接与剩余验收
 
-- 更新日期：2026-11-26
+- 更新日期：2026-11-27
 - 分支：`codex/feat/recommendation-mainline`（Worktree `../speechful-recommendation`），基线 `develop/main@93deaf1`；移植提交 `f7dfd28`（cherry-pick 原交接提交 `4d72156`，推荐核心文件树一致）。
 - 原交接分支：`codex/feat/recommendation-core-handoff`，基线 `bc599b342da707169e55ddff90e8f2a54fc751cc`，保留供追溯。
-- 状态：推荐核心已移植到当前主线并通过本地聚焦验证。服务端整合、正式验收、合并和发布尚未完成。
-- 授权边界：本次仅拉取分支、移植到本地主线并运行测试；未推送、未创建 PR、未合并或部署。
+- PR：[#43](https://github.com/zewbby/SpeechFUL-Develop/pull/43)，目标 `develop/main`；代码 head `165652b` 的 CI PASS（18 success、1 skip）。
+- 状态：推荐核心已移植到当前主线并通过本地聚焦验证；PR 已创建。服务端整合、正式验收、合并和发布尚未完成。
+- 授权边界：2026-11-26 指令“拉到本地，以当前 main 分支为基线继续接入主线，进行测试”，授权本地移植与测试；2026-11-27 指令“提pr”，授权推送分支并创建 PR。合并、发布、部署仍未授权。
 
 ## 本次交付
 
@@ -25,6 +26,7 @@
 | 项目 | 结果 | 范围和依据 |
 | --- | --- | --- |
 | 主线移植的纯 Go 核心 | PASS | Windows 11 25H2 x64、Go 1.22.2 windows/amd64、`GOMAXPROCS=2`、`GOPROXY=off`。`go test -mod=readonly -count=1 ./internal/recommendation/... ./cmd/recommendationlab`（4 个包通过，CLI 无测试文件）、`go build`、`go vet`、Go 文件 `gofmt` 与 `git diff --check` 均通过。离线样本连续运行两次字节一致，SHA-256 同为 `673f00e2d21d16c376b3bc4f42b0519c8259bca0b004b8ce9d6a6f71e0652dea`。 |
+| PR #43 CI | PASS | 代码 head `165652b`；19 项检查 18 success、1 skip（`actual-process-acceptance` 按设计跳过），无 failure。 |
 | 全仓 Linux 编译 | PASS | `GOOS=linux GOARCH=amd64 go build -mod=readonly ./...` 与 `go vet -mod=readonly ./...` 通过，对应产品 CI 的编译范围。 |
 | 全仓 Windows 测试 | BLOCKED | `go test ./...` 在既有 `internal/authprivacy/authorization_evidence.go` 的 `syscall.Flock` 处构建失败；`develop/main` 基线同一位置已存在，属 Windows 平台限制，与本移植无关。 |
 | 本地 race 检测 | NOT_RUN | 本机无 C 编译器，`go test -race` 返回 `-race requires cgo`；原交接提交同内容已在 WSL2 Go 1.22.2 记录 race PASS。 |
@@ -35,4 +37,4 @@
 
 继续验证前先完成新主线接线，并复验空闲账号与小批尾部的清理耗时。以本机原生 J 隔离副本重新校准，保留原 J 和此前结果。容量通过后，在共享出口 IP 下用 300 个账号持续 60 分钟，每人每 30 秒加载 10 帖并上报全部 10 次曝光，每 5 分钟建一次最多 100 帖的轮次。核对到限拒绝、实际曝光保留、清理积压和 Gate 状态。真实用户收益仍未实测。
 
-截至 2026-11-26，纯推荐核心已移植到 `develop/main@93deaf1` 并通过上述聚焦检查；服务端接线尚未开始，下一步先恢复上一轮接线源码，再按当前迁移编号、Gate、Feed 投影和共享限流约定适配。
+截至 2026-11-27，纯推荐核心已移植到 `develop/main@93deaf1`，本地聚焦检查与 PR #43 CI 均通过；服务端接线尚未开始，下一步先恢复上一轮接线源码，再按当前迁移编号、Gate、Feed 投影和共享限流约定适配。
