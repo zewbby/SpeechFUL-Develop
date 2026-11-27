@@ -6,7 +6,7 @@
 - 授权依据与边界：用户要求“建立分支。完善审核平台，先提出设想然后进行实现，验证后PR”，随后明确要求继续修改现有 PR、验证后再提 PR，并反复强调不得合并。授权覆盖本任务实现、本地提交、推送分支和维持 draft PR；不包含合并或部署。
 - 需求确认：用户确认待处理优先的值班队列，并在自查后要求全力修复。追加修复范围为本人降级空白页、队列失败残留加载态、领取后队列空窗、移动端触控尺寸和厚色条视觉问题。未增加批量处理、导出、账号身份信息或其他治理规则。
 - 更新日期：2026-11-27
-- 状态：实现已完成；本地验证 PASS；PR CI 待复验；合并未合并；发布未发布。
+- 状态：实现已完成；本地验证 PASS；PR CI PASS；合并未合并；发布未发布。
 
 ## 目标与范围
 
@@ -47,10 +47,10 @@
 | OpenAPI | Python 3.12、PyYAML 6.0.1、openapi-spec-validator 0.9.0 | PASS：13 份规范完整校验 |
 | Go 编译 | Go 1.26.2；`GOOS=linux go vet`、`go build ./cmd/...`、`GOOS=linux go test -c` 两个受影响包；`internal/moderation` 本机测试 | PASS：静态检查、命令构建、Linux 测试二进制编译与 moderation 包测试通过 |
 | 协作检查 | 暂存差异；`python tools/check-collaboration.py --staged`、19 项协作测试 | PASS |
-| 真实 Linux SQL／HTTPS | PR #39 产品实现提交 `ead5b71`；文档头 `64818da` 复跑，[Report moderation run 45787491266](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/45787491266) | PASS：`admin` 与 `moderation-postgres` 均成功；新 `TestModerationCaseFilter`、`TestModerationCaseListFiltersPostgres` PASS，真实 PostgreSQL、权限、HTTP 与浏览器工作台回归 PASS |
+| 真实 Linux SQL／HTTPS | PR #41 head `7e97938`，[Report moderation run 45969527869](https://github.com/zewbby/SpeechFUL-Develop/actions/runs/45969527869) | PASS：`admin` 与 `moderation-postgres` 均成功；真实 PostgreSQL、权限、HTTP 与浏览器工作台回归 PASS |
 | 视觉检测 | Impeccable detector，`app.mjs`、`styles.css`、`index.html` | PASS：0 条命中；厚侧边色条已移除 |
 
 ## 阻碍与下一步
 
-- 本机缺少 Linux runtime；追加修复未改变服务端代码，既有真实 `Report moderation` 证据仍适用，但最终 head 仍需 PR #41 的适用 CI 复验。
-- 下一步：提交追加修复、推送 PR #41、等待最终 head CI；PR 保持 draft，不合并。
+- 本机缺少 Linux runtime；最终修复 head 的 `Report moderation` 已由 Linux CI 复验通过。
+- 下一步：PR #41 保持 draft 交给管理员；合并与部署仍需另行授权。
