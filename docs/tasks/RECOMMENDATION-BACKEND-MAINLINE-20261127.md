@@ -3,7 +3,7 @@
 - 模式：常规
 - 负责人／状态维护人：当前 Session
 - 执行 Session（指挥模式）：无
-- 分支／Worktree／PR：`codex/feat/recommendation-backend-mainline`；`E:/speechful-recommendation-backend`；基线 `develop/main@0ff400bf1676cc2d716224abdd282661f5ca9d5f`（任务开始时为 `f6b2419e666ccf73035bb2e4cf769a77cfeeb49c`，推送前 rebase 到最新 main）；草稿 PR [#45](https://github.com/zewbby/SpeechFUL-Develop/pull/45)
+- 分支／Worktree／PR：`codex/feat/recommendation-backend-mainline`；`E:/speechful-recommendation-backend`；基线 `develop/main@0ff400bf1676cc2d716224abdd282661f5ca9d5f`（任务开始时为 `f6b2419e666ccf73035bb2e4cf769a77cfeeb49c`，推送前 rebase 到最新 main）；代码 head `0bac1c1`（随后的任务记录提交另计）；草稿 PR [#45](https://github.com/zewbby/SpeechFUL-Develop/pull/45)
 - 本轮规则版本（指挥模式）：不适用
 - 授权依据与边界：用户 2026-11-27 指令：使用交接包 `speechful-recommendation-backend-handoff-20261127.zip`，拉取最新远端 main 并从它创建独立功能分支；按包内 README 检查并应用 `recommendation-backend-mainline.patch`，处理冲突时以当前主线为准并重核 Goose 迁移编号；复用 #43 已合入的排序、去重、轮次模型和编解码，接通 PostgreSQL、候选召回、推荐上下文、建轮／翻页／反馈 API 和运行时；推荐默认关闭并保留 C Gate、会话绑定、共享限流、到限拒绝和未知写处理；保留首页续页预览／补读与时间序 Feed 行为；在一次性 PostgreSQL 环境做功能回归；正式验收留项目服务器并在 PR 标为待验。用户 2026-11-28 指示“推送pr”，据此推送独立分支并创建草稿 PR。未授权合并 main、部署或修改正式数据库；`legacy-reference/` 仅供查阅。
 - 需求确认：无未决取舍。频道上限按主线频道目录改为 10；候选召回与普通 Feed 一致地过滤账号隐藏、审核隐藏、屏蔽、拉黑和已擦除内容；推荐默认关闭，只有显式配置、容量画像、传输密钥和 C-only 服务同时满足才可启用。
@@ -44,17 +44,22 @@
 | 项目 | 被测版本／环境 | 结果与证据 |
 | --- | --- | --- |
 | 实现 | 基线 `0ff400bf1676cc2d716224abdd282661f5ca9d5f`（任务开始时 `f6b2419e666ccf73035bb2e4cf769a77cfeeb49c`）；实现提交 `13684fc7b5bc1c1a99d29a26aec4e9185be5ed79`（55 个文件，6212 行新增、58 行删除） | 交接补丁 46 个路径纳入后，补齐 10 频道、账号隐藏过滤、续页回退测试、OpenAPI、迁移 0058 前向降级和迁移版本断言。`legacy-reference/` 未纳入。推送前 rebase 到最新 `main`；上游两个提交仅改管理台界面与审核任务文档，Go 后端无差异。 |
+| 修复：清理预算 | 提交 `24f71bb`（2 个文件，+38/−3） | CI `feed-postgres` 清理测试偶发超时：`CleanRecommendation` 的 2 秒协作预算从 Gate 预检之前开始计时，慢预检会耗尽整轮预算；改为预检后才开始计时，并保证至少尝试一组，父上下文取消仍立即停止。新增 `slowCleanupSnapshotGate` 与 `TestRecommendationCleanupPreflightDoesNotConsumeBudgetPostgres`。 |
+| 修复：还原后 schema 契约 | 提交 `0bac1c1`（2 个文件，+44） | 预备演练在备份→还原后的 C 实例上稳定失败（readiness 非 200）：`pg_dump` 输出的 `pages_check` 去掉冗余内层括号，`pg_restore` 按该文本解析成扁平 AND 列表，schema 契约的精确集合比较因此拒绝了语义完全相同的还原库。契约仅额外接受这一确切拼写（上限被改仍拒绝），并加 `TestRecommendationPagesCheckAcceptsDumpRestoreSpellingPostgres` 覆盖接受与拒绝两侧。 |
 | 补丁检查与迁移编号 | 基于 `768e8ef` 的补丁对 `f6b2419` 检查 | `git apply --check --index` 未直接通过，报 `community_feed_prepared.go: patch does not apply`；按 README 的冲突路径以当前主线为准解决后应用，Goose 编号重核为 0056–0058，链最大版本 58。 |
 | 正式 Goose 安装／升级 | PostgreSQL 16.15；一次性 Unix socket；受限运行角色 `hnuhole_c_runtime`；Goose v3.22.1 | PASS：`TestRecommendationFormalGooseEmptyInstallAndMainlineUpgradePostgres` 的 `empty_install` 与 `mainline_55_to_58` 均通过；默认关闭、0058 上限、运行角色 schema 契约与既有账号保留均核对。 |
 | 推荐功能回归 | 同一一次性 PostgreSQL；真实 HTTPS；`AUTHLAB_ALLOW_SCHEMA_RESET=1`、`FEED_RECOMMENDATION_OWNED=1` | PASS：`go test -count=1 -v -timeout 30m -run 'TestRecommendation' ./internal/authprivacy`，40 个顶层测试全部 PASS、0 FAIL、0 SKIP，151.652s。覆盖上下文→建轮→同意图重试复用→翻页→反馈、曝光 SQL 落库、10 频道、单频道、部分／全部屏蔽、作者拉黑、账号与审核隐藏、跨账号凭证 409、Gate 冻结不提交、会话撤销／替换／关闭、到限拒绝、TTL 与清理积压。 |
+| 推荐 race 复跑 | 最终代码 `0bac1c1`；`authlab/run-feed-isolated.sh`（`FEED_TEST_RACE=1`、`FEED_TEST_PATTERN='^TestRecommendation'`、`-p 1`、30m 超时） | PASS：`EXIT=0`，44 个顶层测试 PASS、0 FAIL、0 SKIP（含新增的还原拼写回归与清理预检测试）。 |
+| 预发布演练 | `tools/prerelease/environment.py`；候选 `0bac1c1`，回滚基线 `0ff400b`；五个一次性 PostgreSQL 16.15 实例、mailpit v1.21.8、Pillow 12.3.0、Goose v3.22.1、Go 1.22.2 | PASS：`evidence.json` 中 `result: PASS`，17 项检查全部通过，含空库迁移与 schema13 快照升级、受限角色拒绝不可变列写入、实际启动拒绝缺少图片权限、真实 HTTPS 注册／登录／发帖／图片与拒绝、Gate 冻结、备份还原到两个新实例后数据与权限一致、旧会话被拒而新登录读到原文与图片、旧主程序可在还原库运行、应用回滚后候选可重新部署；结束时五个实例与自有进程已停止。 |
 | 首页续页 | 同一 lab；`POST_MEDIA_FIXTURES`／校验器 | PASS：`TestFeedContinuationPreviewsPostgres` 验证 `previews-v1` 同页互动与图片预览，以及移除缩略图能力后回退原有纯读、不伪造预览。 |
-| 静态检查 | WSL2 Ubuntu-2404；Go 工具链；`services/api` | PASS：`go test -mod=readonly ./...` 23 个包全部 `ok`、0 FAIL；`go build -mod=readonly ./...`、`go vet -mod=readonly ./...` PASS；48 个改动 Go 文件按忽略 CRLF 方式核对 gofmt；`git diff --check` PASS。 |
-| Race | WSL2 Ubuntu-2404；`-race` | PASS：`go test -race ./internal/recommendation/... ./internal/authprivacy ./internal/authprivacyruntime`。`authprivacyhttp` 在跳过既有 `TestDMGovernanceHTTPSPostgres` 后 PASS；该测试直接改写进程级 `time.Local`，完整包运行时的 data race 已在未改动的基线 `f6b2419` 临时 Worktree 复现，非本次改动引入。 |
+| 静态检查 | 最终代码 `0bac1c1`；WSL2 Ubuntu-2404；Go 工具链；`services/api` | PASS：`go test -mod=readonly ./...` 23 个包全部 `ok`、0 FAIL；`go build -mod=readonly ./...`、`go vet -mod=readonly ./...` PASS；48 个改动 Go 文件按忽略 CRLF 方式核对 gofmt；`git diff --check` PASS。 |
+| Race | 最终代码 `0bac1c1`；WSL2 Ubuntu-2404 | PASS：推荐 race 套件 44 个顶层测试全过（见上）；此前 `go test -race ./internal/recommendation/... ./internal/authprivacy ./internal/authprivacyruntime` 亦 PASS。`authprivacyhttp` 在跳过既有 `TestDMGovernanceHTTPSPostgres` 后 PASS；该测试直接改写进程级 `time.Local`，完整包运行时的 data race 已在未改动的基线 `f6b2419` 临时 Worktree 复现，非本次改动引入。 |
 | OpenAPI | Windows；仓库固定 Python 校验环境 | PASS：`packages/openapi/check-specs.py` 校验 13 个规格全部通过；`feed-api.yaml` 已记录默认关闭、推荐 Header、三个 POST 路径、请求／响应 schema 和错误码。 |
 | Feed CI（Feed 范围） | `authlab/run-feed-isolated.sh`；隔离 PostgreSQL／Redis／TLS | PASS：160 个顶层 PASS、0 FAIL、5 SKIP（批量计时诊断、搜索性能夹具、三个缺少 Dart 探针的 HTTPS 测试）。 |
 | Feed CI（授权／Gate／Verifier） | 同一隔离 runner；`FEED_TEST_PATTERN='^(TestAuthorization|TestGate|TestVerifier)'` | PASS：67 个顶层 PASS、0 FAIL、1 个按设计跳过的子进程 crash helper。 |
+| GitHub CI（PR #45） | 代码 head `0bac1c1`；GitHub Actions 全部 29 项检查 | PASS：28 success、1 skipped（`actual-process-acceptance`，按仓库配置跳过）、0 failure；含此前稳定失败的 `rehearsal`、以及 `gate-postgres`、`feed-postgres`、`go-postgres`、`search-postgres-100k`、`moderation-postgres`、`registration-postgres` 与各 Flutter 检查。 |
 | 正式服务器验收 | 项目服务器；原生 J 隔离副本 | NOT_RUN（待验）：保留原 J，准备至少 2,000 条独立混合帖；整请求 SQL 上限建轮 64、翻页／重试／反馈各 40；P95 建轮 ≤350 ms、其余各 ≤180 ms；共享出口 IP 下 300 个活跃账号连续 60 分钟，每人每 30 秒加载 10 帖并反馈全部 10 次曝光，每 5 分钟新建一轮、每轮最多 100 帖；核对 72 小时曝光保留、到限拒绝、清理积压和 Gate 状态。 |
 
 ## 阻碍与下一步
 
-本地实现、一次性 PostgreSQL／HTTPS 回归、续页回退、静态检查、适用 race、OpenAPI 与 Feed CI 已完成。分支已按用户 2026-11-28 授权推送，并创建草稿 PR [#45](https://github.com/zewbby/SpeechFUL-Develop/pull/45)。正式服务器容量与 72 小时保留验收仍待项目服务器执行，不能由本地结果替代；合并 main、部署和正式数据库操作均未授权。
+本地实现、一次性 PostgreSQL／HTTPS 回归、续页回退、静态检查、推荐 race 套件、完整预备演练、OpenAPI 与 Feed CI 已完成。修复提交 `24f71bb`、`0bac1c1` 已随分支推到 PR [#45](https://github.com/zewbby/SpeechFUL-Develop/pull/45)（`3759b76..0bac1c1`）。正式服务器容量与 72 小时保留验收仍待项目服务器执行，不能由本地结果替代；合并 main、部署和正式数据库操作均未授权。
