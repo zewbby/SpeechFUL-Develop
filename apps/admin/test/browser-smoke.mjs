@@ -18,7 +18,7 @@ const token = encodeBytes(new Uint8Array(32).fill(13));
 const stamp = '2026-10-18T04:30:00Z';
 const hostile = '<img src=x onerror="window.evidenceExecuted=true">';
 const raster = { mime: 'image/png', base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5mQAAAAASUVORK5CYII=' };
-let role = 'REVIEWER', state = 'PENDING', version = 1, appealState = 'PENDING', revoked = false, auditFailures = 1;
+let role = 'REVIEWER', state = 'PENDING', version = 1, appealState = 'PENDING', revoked = false, auditFailures = 1, caseListFailures = 0;
 let reportPageFailures = 1, releaseLateReport, markLateReportStarted;
 const lateReportStarted = new Promise(resolveStarted => { markLateReportStarted = resolveStarted; });
 const commands = [], errors = [], requests = [];
@@ -46,6 +46,7 @@ try {
       if (url.pathname === '/api/v1/auth/session-revocations') { respond(null, 204); return; }
       if (url.pathname === '/api/v1/moderation/me') { respond({ role, platformNumber: '000123', email: 'PRIVATE-EMAIL', otherIdentities: ['PRIVATE-OTHER-MASK'] }); return; }
       if (url.pathname === '/api/v1/moderation/cases') {
+        if (caseListFailures-- > 0) { respond({}, 503); return; }
         if (url.searchParams.has('before')) { queuePageReads++; queuePageStarted(); await queuePageGate; }
         const stateFilter = url.searchParams.get('state') ?? '', numberFilter = url.searchParams.get('number') ?? '';
         const filtered = [record(), ...profiles.values()].filter(item => (!stateFilter || item.state === stateFilter) && (!numberFilter || item.number === numberFilter));
@@ -76,7 +77,11 @@ try {
       }
       if (url.pathname.endsWith('/revoke')) { revoked = true; commands.push(payload); respond(sanctions()[0]); return; }
       if (url.pathname === '/api/v1/moderation/audit') { if (auditFailures-- > 0) { respond({}, 503); return; } respond({ items: [{ actorNumber: '000999', targetNumber: '000125', action: 'MUTE', reason: '已核查材料。', createdAt: stamp, caseId }] }); return; }
-      if (url.pathname.startsWith('/api/v1/moderation/roles/')) { commands.push(payload); respond({ platformNumber: url.pathname.split('/').at(-1), role: payload.role }); return; }
+      if (url.pathname.startsWith('/api/v1/moderation/roles/')) {
+        const number = url.pathname.split('/').at(-1);
+        if (number === '000123') role = payload.role;
+        commands.push(payload); respond({ platformNumber: number, role: payload.role }); return;
+      }
       respond({}, 404);
     } catch { res.writeHead(500); res.end(); }
   });
@@ -87,8 +92,12 @@ try {
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => requests.push(request.url()));
+  caseListFailures = 1;
   await page.goto(`${origin}/admin`);
   await page.getByLabel('用户名', { exact: true }).fill('reviewer_test'); await page.getByLabel('密码', { exact: true }).fill('synthetic fixture password'); await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.getByRole('button', { name: '加载失败，点击重试', exact: true }).waitFor();
+  assert.equal(await page.locator('.queue-progress').textContent(), '读取失败，可点击下方按钮重试。');
+  await page.getByRole('button', { name: '加载失败，点击重试', exact: true }).click();
   const pendingFilter = page.getByRole('button', { name: '待处理', exact: true });
   await pendingFilter.waitFor();
   assert.equal(await pendingFilter.getAttribute('aria-pressed'), 'true');
@@ -118,6 +127,8 @@ try {
   assert.equal(await page.getByRole('button', { name: '加载后续材料', exact: true }).count(), 0);
   const materialText = await page.locator('.detail').innerText(); assert.ok(materialText.indexOf('说明仅用于核查本案。') < materialText.indexOf('第二份举报材料')); assert.ok(materialText.indexOf('第二份举报材料') < materialText.indexOf('第三份举报材料'));
   await page.getByRole('button', { name: '开始处理', exact: true }).click(); await page.getByText('已进入处理状态。', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '查看处理中', exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll('.segmented button')].some(button => button.textContent === '处理中' && button.getAttribute('aria-pressed') === 'true'));
   await page.getByLabel('处理措施', { exact: true }).selectOption('MUTE');
   await page.getByText(/考虑现有处罚/).waitFor(); await page.getByText('下架本案内容，并禁言账号 3 天。', { exact: true }).waitFor(); await page.getByLabel('处理原因', { exact: true }).fill('根据本案证据作出三天禁言。');
   await page.screenshot({ path: join(root, 'reviewer-case.png'), fullPage: true });
@@ -157,6 +168,18 @@ try {
   await page.getByRole('button', { name: '权限管理', exact: true }).click(); await page.getByLabel('目标平台编号', { exact: true }).fill('000126'); await page.getByLabel('变更原因', { exact: true }).fill('授权专用审核账号。'); await page.getByRole('button', { name: '保存权限变更', exact: true }).click(); await page.getByText('已更新账号 000126 的管理权限。', { exact: true }).waitFor();
   await page.screenshot({ path: join(root, 'admin-narrow.png'), fullPage: true });
   assert.equal(await page.locator('html').evaluate(node => node.scrollWidth <= window.innerWidth), true);
+  const shortControls = await page.evaluate(() => [...document.querySelectorAll('button, input, select, textarea')]
+    .filter(node => {
+      const style = getComputedStyle(node);
+      const box = node.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0 && box.height < 44;
+    })
+    .map(node => ({ name: node.getAttribute('aria-label') || node.textContent.trim().slice(0, 20) || node.id, height: node.getBoundingClientRect().height })));
+  assert.deepEqual(shortControls, []);
+  await page.getByLabel('目标平台编号', { exact: true }).fill('000123'); await page.getByLabel('管理角色', { exact: true }).selectOption('REVIEWER'); await page.getByLabel('变更原因', { exact: true }).fill('自我降级回归。'); await page.getByRole('button', { name: '保存权限变更', exact: true }).click();
+  await page.getByRole('heading', { name: '举报案件', exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: '权限管理', exact: true }).count(), 0);
+  assert.equal(await page.locator('.queue-list').isVisible(), true);
   assert.equal(commands.some(c => c.action === 'MUTE' && c.days === 3), true); assert.equal(commands.some(c => c.accept === true), true); assert.equal(commands.some(c => c.role === 'REVIEWER'), true);
   assert.equal(commands.some(c => c.action === 'RESET_NICKNAME' && c.days === 0), true); assert.equal(commands.some(c => c.action === 'RESET_AVATAR' && c.days === 0), true);
   assert.equal(requests.some(url => url.includes('/moderation/appeals?') && new URL(url).searchParams.get('before') === `${stamp}|${appealId}`), true);

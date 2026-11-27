@@ -169,6 +169,12 @@ test('rendering and assets forbid HTML injection, persistent credentials, third 
   assert.match(css, /focus-visible/); assert.match(html, /aria-live="polite"/);
 });
 
+test('admin styling keeps thick side accents out and exposes mobile control sizing', async () => {
+  const css = await readFile(new URL('../styles.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /border-(?:left|right|top):\s*(?:[2-9]|[1-9]\d)px/);
+  assert.match(css, /@media\(max-width:850px\)[\s\S]*?button,[\s\S]*?min-height:44px/);
+});
+
 test('transport cannot target another origin', async () => {
   const { client } = authenticated(); await client.login('reviewer', 'phrase');
   await assert.rejects(client.request('https://external.invalid/api/v1/me'), /请求地址无效/);

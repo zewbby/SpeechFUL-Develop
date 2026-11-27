@@ -164,20 +164,23 @@ function renderQueue(parent, kind) {
   const refresh = iconButton('刷新', () => { void load(false); }, 'refresh', 'compact');
   const tools = el('div', null, 'queue-tools');
   let numberSearch = null;
+  let updateFilterControls = () => {};
   if (kind === 'cases') {
     const states = [['PENDING', '待处理'], ['PROCESSING', '处理中'], ['ENDED', '已结束'], ['', '全部']];
     const segmented = el('div', null, 'segmented'); segmented.setAttribute('role', 'group'); segmented.setAttribute('aria-label', '案件状态筛选');
     for (const [value, text] of states) {
       const option = button(text, () => {
         if (filter.state === value) return;
-        for (const child of segmented.querySelectorAll('button[data-state]')) {
-          const active = child.dataset.state === value;
-          child.classList.toggle('current', active); child.setAttribute('aria-pressed', String(active));
-        }
-        filter.state = value; selected = null; none(); void load(false);
+        filter.state = value; selected = null; none(); updateFilterControls(); void load(false);
       }, filter.state === value ? 'current' : '');
       option.dataset.state = value; option.setAttribute('aria-pressed', String(filter.state === value)); segmented.append(option);
     }
+    updateFilterControls = () => {
+      for (const child of segmented.querySelectorAll('button[data-state]')) {
+        const active = child.dataset.state === filter.state;
+        child.classList.toggle('current', active); child.setAttribute('aria-pressed', String(active));
+      }
+    };
     const search = el('form', null, 'queue-search');
     numberSearch = input(); numberSearch.inputMode = 'numeric'; numberSearch.autocomplete = 'off'; numberSearch.pattern = '[1-9][0-9]{0,18}'; numberSearch.maxLength = 19; numberSearch.value = filter.number;
     const submit = iconButton('查找', () => {}, 'search', 'primary compact'); submit.type = 'submit';
@@ -194,6 +197,7 @@ function renderQueue(parent, kind) {
   let nextBefore = null, items = [], selected = null, requestVersion = 0, loadVersion = 0, loading = false;
   const scopeText = () => kind === 'cases' ? `${filter.state ? label(filter.state) : '全部状态'}${filter.number ? ` · 工单 ${filter.number}` : ''}` : '待复核申诉';
   function updateProgress(note = '') {
+    progress.classList.remove('error');
     progress.textContent = `${kind === 'cases' ? `${scopeText()} · ` : ''}已加载 ${items.length} 项${nextBefore ? '，还有更早记录' : ''}${note ? `。${note}` : '。'}`;
   }
   list.addEventListener('keydown', event => {
@@ -223,6 +227,15 @@ function renderQueue(parent, kind) {
         for (const row of list.querySelectorAll('button[data-record]')) if (row.dataset.record === record.id) row.remove();
         items = items.filter(value => value.id !== record.id);
         updateProgress('当前案件已不在此筛选范围，详情继续保留');
+        const context = add(el('div', null, 'queue-context'),
+          el('strong', '当前案件已不在该筛选中'),
+          el('p', `工单 ${record.number} 现为“${label(record.state)}”，右侧详情继续保留。`)
+        );
+        const viewState = button(`查看${label(record.state)}`, async () => {
+          filter.state = record.state; selected = record.id; updateFilterControls();
+          await load(false);
+        }, 'compact');
+        context.append(viewState); list.append(context);
       } else updateProgress();
       if (kind === 'appeals' && !items.length && !nextBefore) list.replaceChildren(el('p', '暂无待复核申诉。', 'empty'));
       const isCurrent = () => current === viewVersion && version === requestVersion;
@@ -236,6 +249,7 @@ function renderQueue(parent, kind) {
     refresh.disabled = true;
     list.setAttribute('aria-busy', 'true');
     progress.textContent = '正在读取服务端记录。';
+    progress.classList.remove('error');
     if (!append) { list.replaceChildren(el('p', '正在加载…', 'busy')); items = []; nextBefore = null; }
     try {
       const query = kind === 'cases' ? caseListQuery({ state: filter.state, number: filter.number, before: append ? nextBefore : '' }) : new URLSearchParams({ limit: '50', ...(append && nextBefore ? { before: nextBefore } : {}) });
@@ -256,7 +270,14 @@ function renderQueue(parent, kind) {
       }
       if (nextBefore) list.append(button('加载更早记录', () => load(true), 'pager'));
       updateProgress();
-    } catch (error) { if (current === viewVersion && attempt === loadVersion) { list.replaceChildren(button('加载失败，点击重试', () => load(false), 'pager')); showError(error); } }
+    } catch (error) {
+      if (current === viewVersion && attempt === loadVersion) {
+        list.replaceChildren(button('加载失败，点击重试', () => load(false), 'pager'));
+        progress.textContent = '读取失败，可点击下方按钮重试。';
+        progress.classList.add('error');
+        showError(error);
+      }
+    }
     finally { if (attempt === loadVersion) { loading = false; refresh.disabled = false; list.setAttribute('aria-busy', 'false'); } }
   }
   void load(false);
@@ -418,7 +439,23 @@ function renderRoles(parent) {
   const form = el('form', null, 'inline-form'); const number = input(); number.inputMode = 'numeric'; number.pattern = '[0-9]{6}'; number.maxLength = 6; number.required = true;
   const role = select([['REVIEWER', '审核员'], ['ADMIN', '管理员'], ['NONE', '撤销管理权限']]); const why = reasonInput(); const submit = el('button', '保存权限变更', 'primary'); submit.type = 'submit';
   add(form, field('目标平台编号', number), field('管理角色', role), field('变更原因', why), el('p', '审核员负责案件、下架及限时禁言；管理员额外负责封禁、解封和权限管理。', 'helper'), submit);
-  watchForm(form, async () => { if (!why.value.trim()) throw new Error('请填写变更原因。'); await client.command(`/api/v1/moderation/roles/${number.value}`, { role: role.value, reason: why.value.trim() }, 'PUT'); if (current === viewVersion) { announce(`已更新账号 ${number.value} 的管理权限。`); if (number.value === me.platformNumber) { const identity = await client.request('/api/v1/moderation/me'); me = { role: identity.role, platformNumber: identity.platformNumber }; if (!['ADMIN', 'REVIEWER'].includes(me.role)) await logout(); else renderWorkbench(); } } }); parent.append(form);
+  watchForm(form, async () => {
+    if (!why.value.trim()) throw new Error('请填写变更原因。');
+    await client.command(`/api/v1/moderation/roles/${number.value}`, { role: role.value, reason: why.value.trim() }, 'PUT');
+    if (current !== viewVersion) return;
+    announce(`已更新账号 ${number.value} 的管理权限。`);
+    if (number.value !== me.platformNumber) return;
+    const identity = await client.request('/api/v1/moderation/me');
+    if (current !== viewVersion) return;
+    me = { role: identity.role, platformNumber: identity.platformNumber };
+    if (!['ADMIN', 'REVIEWER'].includes(me.role)) {
+      await logout();
+      return;
+    }
+    if (me.role !== 'ADMIN') page = 'cases';
+    renderWorkbench();
+  });
+  parent.append(form);
 }
 
 renderLogin();
