@@ -338,6 +338,40 @@ func TestRecommendationHTTPSChannelsBlockingHideAndSingleScopePostgres(t *testin
 	}
 }
 
+func TestRecommendationHTTPSAccountHiddenInvalidatesRoundPostgres(t *testing.T) {
+	s := newRecoHTTPS(t, 25)
+	body := jsonBytes(s.bootstrap())
+	first := s.start(body)
+	ids := pageIDs(first)
+	if len(ids) != 10 || first.NextCursor == nil || first.FeedbackReceipt == nil {
+		t.Fatal("fixture page")
+	}
+	state, err := s.lab.Community().ReadHiddenPost(context.Background(), s.lab.Reader.SessionToken, ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.lab.Community().SetHiddenPost(context.Background(), s.lab.Reader.SessionToken, ids[0], true, state.InteractionVersion); err != nil {
+		t.Fatal(err)
+	}
+	// The private hidden toggle advances the feed filter revision, so the
+	// existing round and context are stale. Every reference fails closed rather
+	// than serving or crediting a manifest shaped under the old preference.
+	s.check(s.request("POST", "/api/v1/feed/recommendation/start", s.lab.Reader.SessionToken, body), 409)
+	s.ref("page", first.NextCursor, s.lab.Reader.SessionToken, 409)
+	s.check(s.request("POST", "/api/v1/feed/recommendation/feedback", s.lab.Reader.SessionToken, jsonBytes(rw.Feedback{Receipt: *first.FeedbackReceipt, PostIDs: ids[:2]})), 409)
+	// A context issued after the change starts a fresh round without the hidden
+	// post; the old round is never resurrected.
+	after := s.start(jsonBytes(s.bootstrap()))
+	if len(after.Items) != 10 {
+		t.Fatalf("fresh round returned %d items", len(after.Items))
+	}
+	for _, item := range after.Items {
+		if item.PostID == ids[0] {
+			t.Fatal("hidden post entered the fresh round")
+		}
+	}
+}
+
 func TestRecommendationHTTPSCreateBeforeAndExpiryPostgres(t *testing.T) {
 	s := newRecoHTTPS(t, 12)
 	input := s.bootstrap()
@@ -496,6 +530,21 @@ func TestRecommendationHTTPSFinalSessionAndGatePostgres(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRecommendationHTTPSUninstalledEmitsNoHeadersPostgres(t *testing.T) {
+	s := &recoHTTPS{t: t, lab: ap.NewRecommendationHTTPLab(t, 1)}
+	s.lab.Uninstalled()
+	s.open()
+	t.Cleanup(func() { s.server.Close() })
+	r := s.check(s.request("GET", "/api/v1/feed", s.lab.Reader.SessionToken, nil), 200)
+	for _, header := range []string{"Recommendation-Version", "Recommendation-Available", "Recommendation-Context", "Recommendation-Issued-At", "Recommendation-Create-Before"} {
+		if r.headers.Get(header) != "" {
+			t.Fatalf("uninstalled runtime emitted %s", header)
+		}
+	}
+	start := rw.Start{Version: 1, Nonce: uuid.NewString(), CreatedAt: time.Now().UTC().Truncate(time.Microsecond), Context: strings.Repeat("A", 40)}
+	s.check(s.request("POST", "/api/v1/feed/recommendation/start", s.lab.Reader.SessionToken, jsonBytes(start)), 503)
 }
 
 func TestRecommendationHTTPSOffM0M1AndStrictBoundaryPostgres(t *testing.T) {

@@ -15,9 +15,14 @@ func (c *Community) recommendationPublicReady() bool {
 	return c.recommendation != nil && c.recommendation.config.Enabled && c.recommendation.config.transport != nil
 }
 
-// Called only INSIDE the normal feed's final authorized transaction. Off/M0
-// does not read recommendation state or issue ciphertext; no extra handshake.
+// Called only INSIDE the normal feed's final authorized transaction. An
+// uninstalled recommendation runtime emits no headers at all; an installed but
+// disabled one reports Available=false. Off/M0 does not read recommendation
+// state or issue ciphertext; no extra handshake.
 func (c *Community) recommendationFeedCapability(ctx context.Context, tx pgx.Tx, a uuid.UUID, bearer [32]byte, final AuthorizationDecision, channel string) (*rw.Capability, error) {
+	if c.recommendation == nil {
+		return nil, nil
+	}
 	off := &rw.Capability{}
 	if !c.recommendationPublicReady() {
 		return off, nil

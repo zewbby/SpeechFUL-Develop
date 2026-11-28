@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/zhubaozhenshuai666-lang/HnuHole/services/api/internal/posts"
@@ -88,10 +89,18 @@ func (f *RecommendationHTTPLab) Rebuild(t *testing.T) {
 	}
 	cfg := f.p.config
 	cfg.transport = codec
-	f.p.service, err = f.p.service.WithRecommendation(context.Background(), cfg, recommendationFeedProjection{})
+	f.p.service, err = f.p.service.WithRecommendation(context.Background(), cfg, recommendationFeedProjection{hiddenPosts: f.p.service.posts != nil && f.p.service.posts.hiddenPostsEnabled})
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Uninstalled simulates a Community deployment that never called
+// WithRecommendation; the public boundary must not advertise the feature.
+func (f *RecommendationHTTPLab) Uninstalled() {
+	copy := *f.p.service
+	copy.recommendation = nil
+	f.p.service = &copy
 }
 func (f *RecommendationHTTPLab) Off(t *testing.T, m0 bool) {
 	t.Helper()
@@ -213,4 +222,31 @@ func (f *RecommendationHTTPLab) CloseAccount(t *testing.T) {
 	if _, err := f.p.service.RequestAccountClosure(context.Background(), request, sessionTestPasswordWorker(t, 1)); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// RevokeRecommendation deletes bounded detail in the same final business tx;
+// the disabled epoch tombstone prevents old finite tuples reviving after reset.
+// This destructive fixture-only path is intentionally absent from production
+// builds, so no runtime caller can mistake it for a public deletion route.
+func (c *Community) RevokeRecommendation(ctx context.Context, bearer [32]byte) (PostResponse, error) {
+	return c.withPostSession(ctx, bearer, func(tx pgx.Tx, a uuid.UUID, final AuthorizationDecision, _ restriction) (any, error) {
+		if _, err := tx.Exec(ctx, `SELECT singleton_id FROM c_recommendation.control WHERE singleton_id=1 FOR UPDATE`); err != nil {
+			return nil, err
+		}
+		var already bool
+		if e := tx.QueryRow(ctx, `SELECT disabled FROM c_recommendation.accounts WHERE account_id=$1`, a).Scan(&already); e == nil && already {
+			return nil, nil
+		} else if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return nil, e
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO c_recommendation.accounts(account_id,epoch,disabled,last_at) VALUES($1,1,true,$2) ON CONFLICT(account_id) DO UPDATE SET epoch=c_recommendation.accounts.epoch+1,disabled=true,revision=c_recommendation.accounts.revision+1,last_at=EXCLUDED.last_at`, a, final.TrustedAt); err != nil {
+			return nil, err
+		}
+		for _, table := range []string{"rounds", "intents", "history"} {
+			if _, err := tx.Exec(ctx, `DELETE FROM c_recommendation.`+table+` WHERE account_id=$1`, a); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+	})
 }

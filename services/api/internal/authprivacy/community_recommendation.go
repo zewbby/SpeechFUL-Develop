@@ -104,7 +104,9 @@ func (c *Community) WithRecommendationRuntime(ctx context.Context, cfg Recommend
 	}
 	cfg.realRuntime = true
 	cfg.transport = codec
-	return c.WithRecommendation(ctx, cfg, recommendationFeedProjection{})
+	// The Feed already hides viewer-private posts when that extension exists;
+	// the recommendation projection must apply the same current choice.
+	return c.WithRecommendation(ctx, cfg, recommendationFeedProjection{hiddenPosts: c.posts != nil && c.posts.hiddenPostsEnabled})
 }
 
 func recommendationSession(bearer [32]byte) rm.Digest {

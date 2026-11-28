@@ -394,6 +394,69 @@ func TestRecommendationAtomicFailureFixedMissesAndCASPostgres(t *testing.T) {
 	}
 }
 
+func TestRecommendationProjectionAccountHiddenPostgres(t *testing.T) {
+	p := newRecommendationPG(t, 25)
+	a := sessionTestAccount(t, p.l, "reco_projection_hidden")
+	ctx := context.Background()
+	page := p.start(t, a, p.request(t, a))
+	if len(page.View.IDs) != 10 {
+		t.Fatalf("fixture round has %d IDs", len(page.View.IDs))
+	}
+	ids := page.View.IDs
+	response, e := p.service.RecommendationContext(ctx, a.SessionToken, "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	scope := response.Value.(RecommendationScope)
+	project := func(flag bool) RecommendationProjection {
+		t.Helper()
+		tx, e := p.runtime.Begin(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer tx.Rollback(ctx)
+		out, e := recommendationFeedProjection{hiddenPosts: flag}.ProjectRecommendation(ctx, tx, scope, ids)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return out
+	}
+	if visible := project(true); len(visible.Items) != 10 || len(visible.Unavailable) != 0 {
+		t.Fatal("visible projection omitted a slot")
+	}
+	state, e := p.service.ReadHiddenPost(ctx, a.SessionToken, string(ids[2]))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = p.service.SetHiddenPost(ctx, a.SessionToken, string(ids[2]), true, state.InteractionVersion); e != nil {
+		t.Fatal(e)
+	}
+	hidden := project(true)
+	if len(hidden.Items) != 9 || !reflect.DeepEqual(hidden.Unavailable, []int{2}) {
+		t.Fatalf("hidden projection: %d items, unavailable %v", len(hidden.Items), hidden.Unavailable)
+	}
+	for _, item := range hidden.Items {
+		if item.PostID == string(ids[2]) {
+			t.Fatal("account-hidden post was projected")
+		}
+	}
+	// The flag mirrors the optional Feed extension. A legacy lab without the
+	// extension keeps the old projection untouched.
+	if legacy := project(false); len(legacy.Items) != 10 || len(legacy.Unavailable) != 0 {
+		t.Fatal("legacy projection unexpectedly filtered hidden posts")
+	}
+	state, e = p.service.ReadHiddenPost(ctx, a.SessionToken, string(ids[2]))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = p.service.SetHiddenPost(ctx, a.SessionToken, string(ids[2]), false, state.InteractionVersion); e != nil {
+		t.Fatal(e)
+	}
+	if restored := project(true); len(restored.Items) != 10 || len(restored.Unavailable) != 0 {
+		t.Fatal("unhidden post stayed unavailable in the direct projection")
+	}
+}
+
 func TestRecommendationLikeTimeRevokeAndFormalClosurePostgres(t *testing.T) {
 	p := newRecommendationPG(t, 1)
 	ctx := context.Background()
