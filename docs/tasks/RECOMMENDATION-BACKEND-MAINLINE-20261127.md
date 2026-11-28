@@ -56,13 +56,15 @@
 | 预发布演练 | `tools/prerelease/environment.py`；候选 `0bac1c1`，回滚基线 `0ff400b`；五个一次性 PostgreSQL 16.15 实例、mailpit v1.21.8、Pillow 12.3.0、Goose v3.22.1、Go 1.22.2 | PASS：`evidence.json` 中 `result: PASS`，17 项检查全部通过，含空库迁移与 schema13 快照升级、受限角色拒绝不可变列写入、实际启动拒绝缺少图片权限、真实 HTTPS 注册／登录／发帖／图片与拒绝、Gate 冻结、备份还原到两个新实例后数据与权限一致、旧会话被拒而新登录读到原文与图片、旧主程序可在还原库运行、应用回滚后候选可重新部署；结束时五个实例与自有进程已停止。 |
 | 首页续页 | 同一 lab；`POST_MEDIA_FIXTURES`／校验器 | PASS：`TestFeedContinuationPreviewsPostgres` 验证 `previews-v1` 同页互动与图片预览，以及移除缩略图能力后回退原有纯读、不伪造预览。 |
 | 静态检查 | 最终代码 `0bac1c1`；WSL2 Ubuntu-2404；Go 工具链；`services/api` | PASS：`go test -mod=readonly ./...` 23 个包全部 `ok`、0 FAIL；`go build -mod=readonly ./...`、`go vet -mod=readonly ./...` PASS；48 个改动 Go 文件按忽略 CRLF 方式核对 gofmt；`git diff --check` PASS。 |
+| 静态检查（审查修复后） | 提交 `a257f69`；WSL2 Ubuntu-2404；`services/api` | PASS：7 个改动 Go 文件按忽略 CRLF 方式 `gofmt -l` 无输出；`go build ./...`、`go vet ./internal/authprivacy ./internal/authprivacyhttp ./internal/authprivacyruntime` PASS；`go test -mod=readonly ./...` 23 个包全部 `ok`、0 FAIL；`git diff --check` PASS；OpenAPI 13 个规格 PASS。 |
 | Race | 最终代码 `0bac1c1`；WSL2 Ubuntu-2404 | PASS：推荐 race 套件 44 个顶层测试全过（见上）；此前 `go test -race ./internal/recommendation/... ./internal/authprivacy ./internal/authprivacyruntime` 亦 PASS。`authprivacyhttp` 在跳过既有 `TestDMGovernanceHTTPSPostgres` 后 PASS；该测试直接改写进程级 `time.Local`，完整包运行时的 data race 已在未改动的基线 `f6b2419` 临时 Worktree 复现，非本次改动引入。 |
 | OpenAPI | Windows；仓库固定 Python 校验环境 | PASS：`packages/openapi/check-specs.py` 校验 13 个规格全部通过；`feed-api.yaml` 已记录默认关闭、推荐 Header、三个 POST 路径、请求／响应 schema 和错误码。 |
 | Feed CI（Feed 范围） | `authlab/run-feed-isolated.sh`；隔离 PostgreSQL／Redis／TLS | PASS：160 个顶层 PASS、0 FAIL、5 SKIP（批量计时诊断、搜索性能夹具、三个缺少 Dart 探针的 HTTPS 测试）。 |
 | Feed CI（授权／Gate／Verifier） | 同一隔离 runner；`FEED_TEST_PATTERN='^(TestAuthorization|TestGate|TestVerifier)'` | PASS：67 个顶层 PASS、0 FAIL、1 个按设计跳过的子进程 crash helper。 |
 | GitHub CI（PR #45） | 代码 head `0bac1c1`；GitHub Actions 全部 29 项检查 | PASS：28 success、1 skipped（`actual-process-acceptance`，按仓库配置跳过）、0 failure；含此前稳定失败的 `rehearsal`、以及 `gate-postgres`、`feed-postgres`、`go-postgres`、`search-postgres-100k`、`moderation-postgres`、`registration-postgres` 与各 Flutter 检查。 |
+| GitHub CI（审查修复） | 代码 head `a257f69`（推送 head `291b8d7`）；GitHub Actions 全部 30 项检查 | PASS：29 success、1 skipped（`actual-process-acceptance`，按仓库配置跳过）、0 failure；含 `contract`、`policy`、`go-postgres`、`feed-postgres`、`gate-postgres`、`rehearsal`、`search-postgres-100k`、`moderation-postgres`、`registration-postgres` 与各 Flutter 检查。 |
 | 正式服务器验收 | 项目服务器；原生 J 隔离副本 | NOT_RUN（待验）：保留原 J，准备至少 2,000 条独立混合帖；整请求 SQL 上限建轮 64、翻页／重试／反馈各 40；P95 建轮 ≤350 ms、其余各 ≤180 ms；共享出口 IP 下 300 个活跃账号连续 60 分钟，每人每 30 秒加载 10 帖并反馈全部 10 次曝光，每 5 分钟新建一轮、每轮最多 100 帖；核对 72 小时曝光保留、到限拒绝、清理积压和 Gate 状态。 |
 
 ## 阻碍与下一步
 
-本地实现、一次性 PostgreSQL／HTTPS 回归、续页回退、静态检查、推荐 race 套件、完整预备演练、OpenAPI 与 Feed CI 已完成；PR 审查发现的问题已由 `a257f69` 修复，并在同一隔离环境复跑完整 Feed CI（含 race）。修复提交随分支推到 PR [#45](https://github.com/zewbby/SpeechFUL-Develop/pull/45)。正式服务器容量与 72 小时保留验收仍待项目服务器执行，不能由本地结果替代；合并 main、部署和正式数据库操作均未授权。
+本地实现、一次性 PostgreSQL／HTTPS 回归、续页回退、静态检查、推荐 race 套件、完整预备演练、OpenAPI 与 Feed CI 已完成；PR 审查发现的问题已由 `a257f69` 修复，并在同一隔离环境复跑完整 Feed CI（含 race），推送 head `291b8d7` 的 GitHub Actions 30 项检查为 29 success、1 skipped、0 failure。修复提交随分支推到 PR [#45](https://github.com/zewbby/SpeechFUL-Develop/pull/45)。正式服务器容量与 72 小时保留验收仍待项目服务器执行，不能由本地结果替代；合并 main、部署和正式数据库操作均未授权。
